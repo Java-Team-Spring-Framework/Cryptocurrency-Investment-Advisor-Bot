@@ -4,9 +4,6 @@ build/
 **/build/
 .gradle/
 
-# Gradle wrapper
-gradle/wrapper/gradle-wrapper.jar
-
 # Java
 *.class
 *.log
