@@ -24,11 +24,13 @@ services:
     ports:
       - '8080:8080'
     depends_on:
-      - postgres
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
 
   postgres:
-    image: postgres:18.3
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-crypto_bot_db}
@@ -38,6 +40,13 @@ services:
       - '5432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-crypto_bot_db}"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
 
   rabbitmq:
     image: rabbitmq:3.12-management
