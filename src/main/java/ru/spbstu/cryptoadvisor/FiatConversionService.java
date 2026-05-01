@@ -24,7 +24,7 @@ public class FiatConversionService {
         }
 
         return webClient.get()
-                .uri("https://api.frankfurter.app/latest?from={from}&to={to}", fromFiat.toUpperCase(), toFiat.toUpperCase())
+                .uri("https://api.frankfurter.dev/latest?from={from}&to={to}", fromFiat.toUpperCase(), toFiat.toUpperCase())
                 .retrieve()
                 .bodyToMono(Map.class)
                 .map(response -> {

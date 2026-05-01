@@ -146,15 +146,17 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             case "/price_crypto":
                 if (parts.length > 1) {
                     String fiat = getUserFiat(user);
-                    cryptoInformationModule.getCurrentPrice(parts[1], fiat)
-                            .subscribe(price -> {
-                                if (price == null || price <= 0) {
-                                    sendMessage(chatId, "Could not fetch price for " + parts[1] + ". Please try again later.");
-                                } else {
-                                    String formattedPrice = String.format("%.2f", price);
-                                    sendMessage(chatId, "Current price of " + parts[1].toUpperCase() + ": " + formattedPrice + " " + fiat);
-                                }
-                            }, error -> sendMessage(chatId, "Error fetching price: " + error.getMessage()));
+                    Double price = cryptoInformationModule
+                    .getCurrentPrice(parts[1], fiat)
+                    .block();
+
+                    if (price == null || price <= 0) {
+                        sendMessage(chatId, "Could not fetch price for " + parts[1]);
+                    } else {
+                        sendMessage(chatId,
+                            "Current price of " + parts[1].toUpperCase() + ": "
+                            + String.format("%.2f", price) + " " + fiat);
+                    }
                 } else {
                     sendMessage(chatId, "Usage: /price_crypto <symbol>");
                 }
@@ -180,8 +182,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             case "/llm_analyze":
                 if (parts.length > 1) {
                     sendMessage(chatId, "Requesting investment analysis for " + parts[1] + "...");
-                    messageHandlingModule.analyzeCryptoInvestment(parts[1])
-                            .subscribe(resp -> sendMessage(chatId, resp));
+                    String analysis = messageHandlingModule.analyzeCryptoInvestment(parts[1]).block();
+                    sendMessage(chatId, analysis != null ? analysis : "No response received.");
                 } else {
                     sendMessage(chatId, "Usage: /llm_analyze <symbol>");
                 }
@@ -193,15 +195,15 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 } else {
                     String portfolioStr = p.entrySet().stream().map(e -> e.getKey() + ":" + e.getValue()).collect(Collectors.joining(", "));
                     sendMessage(chatId, "Reviewing your portfolio...");
-                    messageHandlingModule.askOpenRouter("Review this cryptocurrency portfolio and suggest improvements: " + portfolioStr)
-                            .subscribe(resp -> sendMessage(chatId, resp));
+                    String portfolioReview = messageHandlingModule.askOpenRouter("Review this cryptocurrency portfolio and suggest improvements: " + portfolioStr).block();
+                    sendMessage(chatId, portfolioReview != null ? portfolioReview : "No response received.");
                 }
                 break;
             case "/llm_ask":
                 if (parts.length > 1) {
                     String query = text.substring(command.length() + 1);
-                    messageHandlingModule.askOpenRouter(query)
-                            .subscribe(response -> sendMessage(chatId, response));
+                    String answer = messageHandlingModule.askOpenRouter(query).block();
+                    sendMessage(chatId, answer != null ? answer : "No response received.");
                 } else {
                     sendMessage(chatId, "Usage: /llm_ask <your question>");
                 }
@@ -212,36 +214,72 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                     sendMessage(chatId, "Your portfolio is empty.");
                 } else {
                     String fiat = getUserFiat(user);
-                    Flux.fromIterable(port.entrySet())
-                            .flatMap(e -> cryptoInformationModule.getCurrentPrice(e.getKey(), fiat)
-                                    .map(price -> price * e.getValue()))
-                            .reduce(0.0, Double::sum)
-                            .subscribe(total -> sendMessage(chatId, "Total portfolio value: " + total + " " + fiat));
+                    double total = 0;
+
+                    for (Map.Entry<String, Double> e : port.entrySet()) {
+                        Double price = cryptoInformationModule
+                                .getCurrentPrice(e.getKey(), fiat)
+                                .block();
+
+                        if (price != null) {
+                            total += price * e.getValue();
+                        }
+                    }
+
+sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
                 }
                 break;
             case "/compare":
                 if (parts.length > 2) {
-                    String s1 = parts[1];
-                    String s2 = parts[2];
+                    String s1 = parts[1].toUpperCase();
+                    String s2 = parts[2].toUpperCase();
+                    String supported = String.join(", ", CRYPTO_SYMBOLS);
+
+                    if (!isAllowedCrypto(s1) || !isAllowedCrypto(s2)) {
+                        sendMessage(chatId, "Unsupported crypto. Supported: " + supported);
+                        break;
+                    }
+
                     String fiat = getUserFiat(user);
-                    cryptoInformationModule.getCurrentPrice(s1, fiat)
-                            .zipWith(cryptoInformationModule.getCurrentPrice(s2, fiat))
-                            .subscribe(tuple -> {
-                                double p1 = tuple.getT1();
-                                double p2 = tuple.getT2();
-                                sendMessage(chatId, s1 + ": " + p1 + " " + fiat + "\n" + s2 + ": " + p2 + " " + fiat + "\nRatio: " + (p1 / p2));
-                            });
+                    Double p1 = cryptoInformationModule.getCurrentPrice(s1, fiat).block();
+                    Double p2 = cryptoInformationModule.getCurrentPrice(s2, fiat).block();
+
+                    if (p1 == null || p1 <= 0 || p2 == null || p2 <= 0) {
+                        sendMessage(chatId, "Could not fetch prices for " + s1 + " and/or " + s2 + ". Supported: " + supported);
+                    } else {
+                        sendMessage(chatId,
+                                s1 + ": " + String.format("%.2f", p1) + "\n" +
+                                s2 + ": " + String.format("%.2f", p2) + "\nRatio: " + String.format("%.2f", p1 / p2));
+                    }
                 } else {
                     sendMessage(chatId, "Usage: /compare <symbol1> <symbol2>");
                 }
                 break;
             case "/price_history":
                 if (parts.length > 2) {
-                    String s = parts[1];
-                    int days = Integer.parseInt(parts[2]);
-                    String fiat = getUserFiat(user);
-                    bingXService.getHistory(s, fiat, "1d", days)
-                            .subscribe(prices -> sendMessage(chatId, "Price history for " + s + " (" + days + " days): " + prices));
+                    String s = parts[1].toUpperCase();
+                    String supported = String.join(", ", CRYPTO_SYMBOLS);
+                    if (!isAllowedCrypto(s)) {
+                        sendMessage(chatId, "Unsupported crypto. Supported: " + supported);
+                        break;
+                    }
+                    int days;
+                    try {
+                        days = Integer.parseInt(parts[2]);
+                    } catch (NumberFormatException e) {
+                        sendMessage(chatId, "Days must be a positive integer. Supported cryptocurrencies: " + supported);
+                        break;
+                    }
+                    if (days < 1) {
+                        sendMessage(chatId, "Days must be at least 1. Supported cryptocurrencies: " + supported);
+                        break;
+                    }
+                    List<Double> prices = bingXService.getHistory(s, "1d", days).block();
+                    if (prices == null || prices.isEmpty()) {
+                        sendMessage(chatId, "Price history unavailable for " + s + ". Supported: " + supported);
+                    } else {
+                        sendMessage(chatId, "Price history for " + s + ": " + prices);
+                    }
                 } else {
                     sendMessage(chatId, "Usage: /price_history <symbol> <days>");
                 }
@@ -260,6 +298,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                         "/portfolio_amount - View portfolio value\n" +
                         "/llm_analyze <symbol> - Get LLM investment analysis for a crypto\n" +
                         "/llm_portfolio - Get LLM review of your portfolio\n" +
+                        "/compare <symbol1> <symbol2> - Compare prices of two cryptos\n" +
+                        "/price_history <symbol> <days> - View price history\n" +
                         "/llm_ask <question> - Ask the LLM about crypto markets");
                 break;
             default:
@@ -420,25 +460,18 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             sendMessage(chatId, "No tracked cryptocurrencies.");
             return;
         }
-        Flux.fromIterable(tracked)
-                .flatMap(info -> cryptoInformationModule.getCurrentPrice(info.getSymbol(), fiat)
-                        .map(price -> {
-                            if (price != null && price > 0) {
-                                String formattedPrice = String.format("%.2f", price);
-                                return info.getSymbol() + ": " + formattedPrice + " " + fiat + " (target: " + info.getTargetPrice() + " " + fiat + ")";
-                            } else {
-                                return info.getSymbol() + ": price unavailable (target: " + info.getTargetPrice() + " " + fiat + ")";
-                            }
-                        })
-                        .onErrorReturn(info.getSymbol() + ": error fetching price (target: " + info.getTargetPrice() + " " + fiat + ")"))
-                .collectList()
-                .subscribe(lines -> {
-                    if (lines.isEmpty()) {
-                        sendMessage(chatId, "Could not fetch any tracked prices.");
-                    } else {
-                        sendMessage(chatId, "Tracked cryptocurrencies:\n" + String.join("\n", lines));
-                    }
-                });
+
+        List<String> lines = new ArrayList<>();
+        for (CryptoInformationModule.TrackedCryptoInfo info : tracked) {
+            Double price = cryptoInformationModule.getCurrentPrice(info.getSymbol(), fiat).block();
+            if (price != null && price > 0) {
+                lines.add(info.getSymbol() + ": " + String.format("%.2f", price) + " " + fiat + " (target: " + info.getTargetPrice() + " " + fiat + ")");
+            } else {
+                lines.add(info.getSymbol() + ": price unavailable (target: " + info.getTargetPrice() + " " + fiat + ")");
+            }
+        }
+
+        sendMessage(chatId, "Tracked cryptocurrencies:\n" + String.join("\n", lines));
     }
 
     private void sendCurrentFiat(String chatId, User user) {

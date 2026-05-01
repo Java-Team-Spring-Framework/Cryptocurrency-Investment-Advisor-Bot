@@ -39,7 +39,7 @@ public class AlertsHandlingModule {
                                 }
                             });
 
-                    bingXService.get24hChange(symbol, "USD")
+                    bingXService.get24hChange(symbol)
                             .subscribe(changePercent -> {
                                 if (Math.abs(changePercent) >= 5.0) {
                                     telegramBotService.sendMessage(chatId, "ALERT! " + symbol + " price changed by " + changePercent + "% in 24h");
