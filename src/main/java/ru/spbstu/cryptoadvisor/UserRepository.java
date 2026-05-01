@@ -50,10 +50,10 @@ public class UserRepository {
         return user;
     }
 
-    public void updateFiat(Long userId, String fiatSymbol) {
+    public boolean updateFiat(Long userId, String fiatSymbol) {
         Long fiatId = dsl.select(field("fiat_id"))
                 .from(table("fiat_currency"))
-                .where(field("symbol").eq(fiatSymbol))
+                .where(field("symbol").eq(fiatSymbol.toUpperCase()))
                 .fetchOne(0, Long.class);
         
         if (fiatId != null) {
@@ -61,7 +61,18 @@ public class UserRepository {
                     .set(field("fiat_id"), fiatId)
                     .where(field("user_id").eq(userId))
                     .execute();
+            return true;
         }
+        return false;
+    }
+
+    public Optional<String> getFiatSymbolByUserId(Long userId) {
+        return Optional.ofNullable(dsl.select(field("f.symbol"))
+                .from(table("\"user\"").as("u"))
+                .leftJoin(table("fiat_currency").as("f"))
+                .on(field("u.fiat_id").eq(field("f.fiat_id")))
+                .where(field("u.user_id").eq(userId))
+                .fetchOne(0, String.class));
     }
 
     private User mapToUser(Record record) {

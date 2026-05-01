@@ -61,6 +61,7 @@ INSERT INTO fiat_currency (symbol, name) VALUES ('USD', 'US Dollar') ON CONFLICT
 INSERT INTO fiat_currency (symbol, name) VALUES ('EUR', 'Euro') ON CONFLICT (symbol) DO NOTHING;
 INSERT INTO fiat_currency (symbol, name) VALUES ('JPY', 'Japanese Yen') ON CONFLICT (symbol) DO NOTHING;
 INSERT INTO fiat_currency (symbol, name) VALUES ('GBP', 'British Pound') ON CONFLICT (symbol) DO NOTHING;
+INSERT INTO fiat_currency (symbol, name) VALUES ('TRY', 'Turkish Lira') ON CONFLICT (symbol) DO NOTHING;
 INSERT INTO fiat_currency (symbol, name) VALUES ('RUB', 'Russian Ruble') ON CONFLICT (symbol) DO NOTHING;
 INSERT INTO fiat_currency (symbol, name) VALUES ('CNY', 'Chinese Yuan') ON CONFLICT (symbol) DO NOTHING;
 
