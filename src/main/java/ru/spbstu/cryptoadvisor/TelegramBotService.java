@@ -33,6 +33,13 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private static final List<String> FIAT_SYMBOLS = Arrays.asList("USD", "EUR", "JPY", "GBP", "TRY", "RUB", "CNY");
     private static final List<String> CRYPTO_SYMBOLS = Arrays.asList("BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "NEAR", "LTC");
 
+    private static final String BTN_SET_FIAT = "Choose fiat currency";
+    private static final String BTN_CURRENT_FIAT = "Show current fiat";
+    private static final String BTN_ADD_CRYPTO = "Add tracked crypto";
+    private static final String BTN_REMOVE_CRYPTO = "Remove tracked crypto";
+    private static final String BTN_TRACKED = "Current tracked crypto";
+    private static final String BTN_BACK = "Back";
+
     private final String botToken;
     private final AuthUserModule authUserModule;
     private final CryptoInformationModule cryptoInformationModule;
@@ -100,6 +107,11 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         User user = optionalUser.get();
         PendingCommand pending = pendingCommands.get(chatId);
         if (pending != null) {
+            if (BTN_BACK.equals(text)) {
+                pendingCommands.remove(chatId);
+                sendMainMenu(chatId, "Действие отменено.");
+                return;
+            }
             switch (pending.action) {
                 case ADD_TRACKED_CHOOSE:
                     handlePendingAddTrackedChoose(chatId, user, text);
@@ -115,9 +127,33 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             }
         }
 
+        switch (text) {
+            case BTN_SET_FIAT:
+                sendFiatSelection(chatId);
+                return;
+            case BTN_CURRENT_FIAT:
+                sendCurrentFiat(chatId, user);
+                return;
+            case BTN_ADD_CRYPTO:
+                sendAddTrackedSelection(chatId);
+                return;
+            case BTN_REMOVE_CRYPTO:
+                sendRemoveTrackedSelection(chatId, user);
+                return;
+            case BTN_TRACKED:
+                sendTrackedList(chatId, user);
+                return;
+            case BTN_BACK:
+                sendMainMenu(chatId, "Menu");
+                return;
+        }
+
         switch (command) {
             case "/start":
-                sendMessage(chatId, "Welcome back, " + (username != null ? username : "") + "!");
+                sendMainMenu(chatId, "Welcome back, " + (username != null ? username : "") + "!");
+                break;
+            case "/menu":
+                sendMainMenu(chatId, "Menu:");
                 break;
             case "/set_fiat":
                 if (parts.length > 1) {
@@ -340,14 +376,14 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
 
         String currentFiat = getUserFiat(user);
         if (normalized.equals(currentFiat)) {
-            sendMessage(chatId, "Your fiat currency is already set to " + normalized + ".");
+            sendMainMenu(chatId, "Your fiat currency is already set to " + normalized + ".");
             return;
         }
 
         if (userRepository.updateFiat(user.getId(), normalized)) {
-            sendMessage(chatId, "Fiat currency set to " + normalized + ".");
+            sendMainMenu(chatId, "Fiat currency set to " + normalized + ".");
         } else {
-            sendMessage(chatId, "Failed to set fiat currency. Please try again.");
+            sendMainMenu(chatId, "Failed to set fiat currency. Please try again.");
         }
     }
 
@@ -422,7 +458,7 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
                 return;
             }
             if (cryptoInformationModule.addTrackedCurrency(user.getId(), symbol, targetPrice)) {
-                sendMessage(chatId, "Added " + symbol + " to watchlist with target price " + targetPrice + ".");
+                sendMainMenu(chatId, "Added " + symbol + " to watchlist with target price " + targetPrice + ".");
             } else {
                 // Try update if already exists
                 if (cryptoInformationModule.updateTargetPrice(user.getId(), symbol, targetPrice)) {
@@ -482,9 +518,9 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
         List<String> trackedAfter = cryptoInformationModule.getTrackedCurrencies(user.getId());
         if (trackedAfter.isEmpty()) {
             cryptoInformationModule.ensureDefaultTrackedCurrency(user.getId());
-            sendMessage(chatId, "No tracked cryptocurrencies left. Default BTC has been added to your watchlist.");
+            sendMainMenu(chatId, "No tracked cryptocurrencies left. Default BTC has been added to your watchlist.");
         } else {
-            sendMessage(chatId, "Tracked crypto removed. Current tracked: " + String.join(", ", trackedAfter));
+            sendMainMenu(chatId, "Tracked crypto removed. Current tracked: " + String.join(", ", trackedAfter));
         }
     }
 
@@ -543,10 +579,42 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
         if (!row.isEmpty()) {
             keyboard.add(row);
         }
+        KeyboardRow backRow = new KeyboardRow();
+        backRow.add(new KeyboardButton(BTN_BACK));
+        keyboard.add(backRow);
+        
         markup.setKeyboard(keyboard);
         markup.setResizeKeyboard(true);
         markup.setOneTimeKeyboard(true);
         return markup;
+    }
+
+    private ReplyKeyboardMarkup createMainMenu() {
+        ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
+        List<KeyboardRow> rows = new ArrayList<>();
+
+        KeyboardRow row1 = new KeyboardRow();
+        row1.add(new KeyboardButton(BTN_SET_FIAT));
+        row1.add(new KeyboardButton(BTN_CURRENT_FIAT));
+        rows.add(row1);
+
+        KeyboardRow row2 = new KeyboardRow();
+        row2.add(new KeyboardButton(BTN_ADD_CRYPTO));
+        row2.add(new KeyboardButton(BTN_REMOVE_CRYPTO));
+        rows.add(row2);
+
+        KeyboardRow row3 = new KeyboardRow();
+        row3.add(new KeyboardButton(BTN_TRACKED));
+        rows.add(row3);
+
+        markup.setKeyboard(rows);
+        markup.setResizeKeyboard(true);
+        markup.setOneTimeKeyboard(false); 
+        return markup;
+    }
+
+    private void sendMainMenu(String chatId, String text) {
+        sendMessage(chatId, text, createMainMenu());
     }
 
     private void sendMessage(String chatId, String text, ReplyKeyboardMarkup markup) {
