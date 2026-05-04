@@ -57,7 +57,7 @@ public class CryptoInformationModule {
         return true;
     }
 
-    public boolean removeTrackedCurrency(Long userId, String symbol) {
+        public boolean removeTrackedCurrency(Long userId, String symbol) {
         String normalizedSymbol = symbol.toUpperCase();
         Long cryptoId = dsl.select(field("crypto_currency_id"))
                 .from(table("crypto_currency"))
@@ -74,6 +74,30 @@ public class CryptoInformationModule {
                 .execute();
 
         return deleted > 0;
+    }
+
+    public boolean updateTargetPrice(Long userId, String symbol, Double targetPrice) {
+        if (targetPrice == null || targetPrice < 0) {
+            return false;
+        }
+
+        String normalizedSymbol = symbol.toUpperCase();
+        Long cryptoId = dsl.select(field("crypto_currency_id"))
+                .from(table("crypto_currency"))
+                .where(field("symbol").eq(normalizedSymbol))
+                .fetchOne(0, Long.class);
+
+        if (cryptoId == null) {
+            return false;
+        }
+
+        int updated = dsl.update(table("tracked_currency"))
+                .set(field("target_price"), targetPrice)
+                .where(field("user_id").eq(userId))
+                .and(field("crypto_currency_id").eq(cryptoId))
+                .execute();
+
+        return updated > 0;
     }
 
     public List<String> getTrackedCurrencies(Long userId) {

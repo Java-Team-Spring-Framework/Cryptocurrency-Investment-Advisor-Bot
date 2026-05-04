@@ -19,21 +19,38 @@ public class FiatConversionService {
     }
 
     public Mono<Double> getFiatRate(String fromFiat, String toFiat) {
-        if (fromFiat.equalsIgnoreCase(toFiat)) {
+        String from = fromFiat.toUpperCase();
+        String to = toFiat.toUpperCase();
+        if (from.equals(to)) {
             return Mono.just(1.0);
         }
 
         return webClient.get()
-                .uri("https://api.frankfurter.dev/latest?from={from}&to={to}", fromFiat.toUpperCase(), toFiat.toUpperCase())
+                .uri("https://api.exchangerate-api.com/v4/latest/EUR")
                 .retrieve()
                 .bodyToMono(Map.class)
                 .map(response -> {
-                    log.debug("Fiat conversion response for {} to {}: {}", fromFiat, toFiat, response);
+                    log.debug("Fiat conversion response for EUR rates: {}", response);
                     if (response != null && response.containsKey("rates")) {
                         Map<String, Object> rates = (Map<String, Object>) response.get("rates");
-                        Object rate = rates.get(toFiat.toUpperCase());
-                        if (rate != null) {
-                            return Double.parseDouble(rate.toString());
+                        if (from.equals("EUR")) {
+                            Object rate = rates.get(to);
+                            if (rate != null) {
+                                return Double.parseDouble(rate.toString());
+                            }
+                        } else if (to.equals("EUR")) {
+                            Object rate = rates.get(from);
+                            if (rate != null) {
+                                return 1.0 / Double.parseDouble(rate.toString());
+                            }
+                        } else {
+                            Object rateFrom = rates.get(from);
+                            Object rateTo = rates.get(to);
+                            if (rateFrom != null && rateTo != null) {
+                                double rf = Double.parseDouble(rateFrom.toString());
+                                double rt = Double.parseDouble(rateTo.toString());
+                                return rt / rf;
+                            }
                         }
                     }
                     return 1.0; // fallback

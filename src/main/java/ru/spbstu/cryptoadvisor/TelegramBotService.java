@@ -40,6 +40,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private final MessageHandlingModule messageHandlingModule;
     private final UserRepository userRepository;
     private final BingXService bingXService;
+    private final FiatConversionService fiatConversionService;
     private final Map<String, PendingCommand> pendingCommands = new ConcurrentHashMap<>();
 
     public TelegramBotService(AuthUserModule authUserModule,
@@ -47,7 +48,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                               PortfolioManagementModule portfolioManagementModule,
                               MessageHandlingModule messageHandlingModule,
                               UserRepository userRepository,
-                              BingXService bingXService) {
+                              BingXService bingXService,
+                              FiatConversionService fiatConversionService) {
         this.botToken = System.getenv("TELEGRAM_BOT_TOKEN");
         this.authUserModule = authUserModule;
         this.cryptoInformationModule = cryptoInformationModule;
@@ -55,6 +57,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         this.messageHandlingModule = messageHandlingModule;
         this.userRepository = userRepository;
         this.bingXService = bingXService;
+        this.fiatConversionService = fiatConversionService;
     }
 
     @Override
@@ -248,8 +251,8 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
                         sendMessage(chatId, "Could not fetch prices for " + s1 + " and/or " + s2 + ". Supported: " + supported);
                     } else {
                         sendMessage(chatId,
-                                s1 + ": " + String.format("%.2f", p1) + "\n" +
-                                s2 + ": " + String.format("%.2f", p2) + "\nRatio: " + String.format("%.2f", p1 / p2));
+                                s1 + ": " + String.format("%.2f", p1) + " " + fiat + "\n" +
+                                s2 + ": " + String.format("%.2f", p2) + " " + fiat + "\nRatio: " + String.format("%.2f", p1 / p2));
                     }
                 } else {
                     sendMessage(chatId, "Usage: /compare <symbol1> <symbol2>");
@@ -278,7 +281,24 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
                     if (prices == null || prices.isEmpty()) {
                         sendMessage(chatId, "Price history unavailable for " + s + ". Supported: " + supported);
                     } else {
-                        sendMessage(chatId, "Price history for " + s + ": " + prices);
+                        String fiat = getUserFiat(user);
+                        Double rate = fiatConversionService.getFiatRate("USD", fiat).block();
+                        if (rate == null) rate = 1.0;
+                        StringBuilder sb = new StringBuilder("Price history for " + s + ":\n");
+                        for (int i = 0; i < prices.size(); i++) {
+                            double converted = prices.get(i) * rate;
+                            String arrow = "";
+                            if (i > 0) {
+                                double prev = prices.get(i-1) * rate;
+                                if (converted > prev) {
+                                    arrow = " ↑";
+                                } else if (converted < prev) {
+                                    arrow = " ↓";
+                                }
+                            }
+                            sb.append("Day ").append(i + 1).append(": ").append(String.format("%.2f", converted)).append(" ").append(fiat).append(arrow).append("\n");
+                        }
+                        sendMessage(chatId, sb.toString().trim());
                     }
                 } else {
                     sendMessage(chatId, "Usage: /price_history <symbol> <days>");
@@ -372,8 +392,22 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
         }
         List<String> tracked = cryptoInformationModule.getTrackedCurrencies(user.getId());
         if (tracked.contains(normalized)) {
-            sendMessage(chatId, "Currency " + normalized + " is already tracked.");
-            pendingCommands.remove(chatId);
+            if (normalized.equals("BTC") && tracked.size() == 1) {
+                // Check if target price is 0
+                List<CryptoInformationModule.TrackedCryptoInfo> infos = cryptoInformationModule.getTrackedCurrencyInfo(user.getId());
+                Optional<CryptoInformationModule.TrackedCryptoInfo> btcInfo = infos.stream().filter(i -> i.getSymbol().equals("BTC")).findFirst();
+                if (btcInfo.isPresent() && btcInfo.get().getTargetPrice() == 0.0) {
+                    // Allow updating target for default BTC with 0 price
+                    pendingCommands.put(chatId, new PendingCommand(PendingAction.ADD_TRACKED_PRICE, normalized));
+                    sendMessage(chatId, "Enter the target price for " + normalized + " in " + getUserFiat(user) + ":");
+                } else {
+                    sendMessage(chatId, "Currency " + normalized + " is already tracked.");
+                    pendingCommands.remove(chatId);
+                }
+            } else {
+                sendMessage(chatId, "Currency " + normalized + " is already tracked.");
+                pendingCommands.remove(chatId);
+            }
             return;
         }
         pendingCommands.put(chatId, new PendingCommand(PendingAction.ADD_TRACKED_PRICE, normalized));
@@ -390,7 +424,12 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
             if (cryptoInformationModule.addTrackedCurrency(user.getId(), symbol, targetPrice)) {
                 sendMessage(chatId, "Added " + symbol + " to watchlist with target price " + targetPrice + ".");
             } else {
-                sendMessage(chatId, "Could not add " + symbol + ". It may already be tracked.");
+                // Try update if already exists
+                if (cryptoInformationModule.updateTargetPrice(user.getId(), symbol, targetPrice)) {
+                    sendMessage(chatId, "Updated target price for " + symbol + " to " + targetPrice + ".");
+                } else {
+                    sendMessage(chatId, "Could not add or update " + symbol + ".");
+                }
             }
             pendingCommands.remove(chatId);
         } catch (NumberFormatException e) {
