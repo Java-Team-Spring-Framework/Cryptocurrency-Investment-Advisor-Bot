@@ -14,6 +14,13 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.Keyboard
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import static org.jooq.impl.DSL.e;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -107,6 +114,21 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 case REMOVE_TRACKED:
                     handlePendingRemoveTracked(chatId, user, text);
                     return;
+                case PORTFOLIO_ADD_CHOOSE_CRYPTO:
+                    handlePortfolioAddChoose(chatId, user, text);
+                    return;
+                case PORTFOLIO_ADD_AMOUNT:
+                    handlePortfolioAddAmount(chatId, user, text, pending.symbol);
+                    return;
+                case PORTFOLIO_REMOVE_CHOOSE_CRYPTO:
+                    handlePortfolioRemoveChoose(chatId, user, text);
+                    return;
+                case PORTFOLIO_REMOVE_AMOUNT:
+                    handlePortfolioRemoveAmount(chatId, user, text, pending.symbol);
+                    return;
+                case PORTFOLIO_HISTORY_PERIOD:
+                    handlePortfolioHistoryPeriod(chatId, user, text);
+                    return;
                 default:
                     break;
             }
@@ -160,23 +182,38 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 }
                 break;
             case "/portfolio_add":
-                if (parts.length > 3) {
-                    portfolioManagementModule.addAsset(user.getId(), parts[1], Double.parseDouble(parts[2]), Double.parseDouble(parts[3]));
-                    sendMessage(chatId, "Added " + parts[2] + " " + parts[1] + " to your portfolio");
+               
+                if (parts.length == 4) {
+                    
+                    try {
+                        String symbol = parts[1].toUpperCase();
+                        double amount = Double.parseDouble(parts[2]);
+                        double price = Double.parseDouble(parts[3]);
+                        portfolioManagementModule.addAsset(user.getId(), symbol, amount, price);
+                        sendMessage(chatId, "Добавлено " + amount + " " + symbol + " в портфель.");
+                    } catch (Exception e) {
+                        sendMessage(chatId, "Ошибка: " + e.getMessage());
+                    }
                 } else {
-                    sendMessage(chatId, "Usage: /portfolio_add <symbol> <amount> <price_at_purchase>");
+                    
+                    sendPortfolioAddChooseCrypto(chatId);
                 }
                 break;
+            case "/portfolio_remove":
+                
+                Map<String, Double> currentPortfolio = portfolioManagementModule.getPortfolio(user.getId());
+                if (currentPortfolio.isEmpty()) {
+                    sendMessage(chatId, "Ваш портфель пуст.");
+                } else {
+                    sendPortfolioRemoveChooseCrypto(chatId, currentPortfolio);
+                }
+                break;
+
             case "/portfolio":
-                Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
-                if (portfolio.isEmpty()) {
-                    sendMessage(chatId, "Your portfolio is empty.");
-                } else {
-                    StringBuilder sb = new StringBuilder("Your portfolio:\n");
-                    portfolio.forEach((s, a) -> sb.append(s).append(": ").append(a).append("\n"));
-                    sendMessage(chatId, sb.toString());
-                }
+               
+                handlePortfolioView(chatId, user);
                 break;
+                
             case "/llm_analyze":
                 if (parts.length > 1) {
                     sendMessage(chatId, "Requesting investment analysis for " + parts[1] + "...");
@@ -206,19 +243,37 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                     sendMessage(chatId, "Usage: /llm_ask <your question>");
                 }
                 break;
+            
             case "/portfolio_amount":
+               
                 Map<String, Double> port = portfolioManagementModule.getPortfolio(user.getId());
                 if (port.isEmpty()) {
-                    sendMessage(chatId, "Your portfolio is empty.");
+                    sendMessage(chatId, "Ваш портфель пуст.");
                 } else {
                     String fiat = getUserFiat(user);
+              
                     Flux.fromIterable(port.entrySet())
-                            .flatMap(e -> cryptoInformationModule.getCurrentPrice(e.getKey(), fiat)
-                                    .map(price -> price * e.getValue()))
-                            .reduce(0.0, Double::sum)
-                            .subscribe(total -> sendMessage(chatId, "Total portfolio value: " + total + " " + fiat));
+                        .flatMap(e -> cryptoInformationModule.getCurrentPrice(e.getKey(), fiat)
+                                .map(price -> price * e.getValue())
+                                .onErrorResume(err -> Mono.just(0.0))) 
+                        .reduce(0.0, Double::sum)
+                        .subscribe(total -> {
+                            String formatted = String.format("%.2f", total);
+                            sendMessage(chatId, "Общая стоимость портфеля: " + formatted + " " + fiat);
+                        });
                 }
                 break;
+
+            case "/portfolio_history":
+              
+                handlePortfolioHistoryStart(chatId, user);
+                break;
+            
+            case "/portfolio_crypto_history":
+                
+                handlePortfolioCryptoHistory(chatId, user);
+                break;
+
             case "/compare":
                 if (parts.length > 2) {
                     String s1 = parts[1];
@@ -440,6 +495,317 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                     }
                 });
     }
+    
+    private void sendPortfolioAddChooseCrypto(String chatId) {
+        List<String> buttons = new ArrayList<>(CRYPTO_SYMBOLS);
+        buttons.add("Назад");  
+        ReplyKeyboardMarkup keyboard = createKeyboard(buttons, 3);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_ADD_CHOOSE_CRYPTO, null));
+        sendMessage(chatId, "Выберите криптовалюту для добавления в портфель:", keyboard);
+    }
+    
+     private void handlePortfolioAddChoose(String chatId, User user, String text) {
+        if (text.equalsIgnoreCase("Назад")) {
+            pendingCommands.remove(chatId);
+            sendMessage(chatId, "Добавление отменено.");
+            return;
+        }
+        String symbol = text.toUpperCase();
+        if (!isAllowedCrypto(symbol)) {
+            sendMessage(chatId, "Пожалуйста, выберите криптовалюту из списка.");
+            return;
+        }
+        
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_ADD_AMOUNT, symbol));
+        sendMessage(chatId, "Введите количество монет " + symbol + ":");
+    }
+    
+    private void handlePortfolioAddAmount(String chatId, User user, String text, String symbol) {
+        double amount;
+        try {
+            amount = Double.parseDouble(text);
+            if (amount <= 0) {
+                sendMessage(chatId, "Количество должно быть положительным числом. Попробуйте снова.");
+                return;
+            }
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "Некорректный ввод. Введите положительное число, например: 0.5");
+            return;
+        }
+
+        
+        pendingCommands.remove(chatId);
+
+      
+        cryptoInformationModule.getCurrentPrice(symbol, "USD")
+            .subscribe(priceUsd -> {
+                if (priceUsd == null || priceUsd <= 0) {
+                    sendMessage(chatId, "Не удалось получить текущую цену " + symbol + ". Попробуйте позже.");
+                    return;
+                }
+                try {
+                    portfolioManagementModule.addAsset(user.getId(), symbol, amount, priceUsd);
+                    sendMessage(chatId, "Успешно добавлено: " + amount + " " + symbol +
+                                         " по цене $" + String.format("%.2f", priceUsd));
+                 
+                    handlePortfolioView(chatId, user);
+                } catch (Exception e) {
+                    sendMessage(chatId, "Ошибка при добавлении: " + e.getMessage());
+                }
+            }, error -> {
+                sendMessage(chatId, "Ошибка получения цены: " + error.getMessage());
+            });
+    }
+
+    private void sendPortfolioRemoveChooseCrypto(String chatId, Map<String, Double> portfolio) {
+        List<String> symbols = new ArrayList<>(portfolio.keySet());
+        symbols.add("Назад");
+        ReplyKeyboardMarkup keyboard = createKeyboard(symbols, 3);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_REMOVE_CHOOSE_CRYPTO, null));
+        sendMessage(chatId, "Выберите криптовалюту для удаления из портфеля:", keyboard);
+    }
+    
+
+    private void handlePortfolioRemoveChoose(String chatId, User user, String text) {
+        if (text.equalsIgnoreCase("Назад")) {
+            pendingCommands.remove(chatId);
+            sendMessage(chatId, "Удаление отменено.");
+            return;
+        }
+        String symbol = text.toUpperCase();
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (!portfolio.containsKey(symbol)) {
+            sendMessage(chatId, "Этой криптовалюты нет в вашем портфеле. Выберите из списка.");
+            return;
+        }
+       
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_REMOVE_AMOUNT, symbol));
+        double currentAmount = portfolio.get(symbol);
+        sendMessage(chatId, "У вас есть " + currentAmount + " " + symbol +
+                           ". Сколько монет вы хотите удалить?");
+    }
+    
+
+    private void handlePortfolioRemoveAmount(String chatId, User user, String text, String symbol) {
+        double amountToRemove;
+        try {
+            amountToRemove = Double.parseDouble(text);
+            if (amountToRemove <= 0) {
+                sendMessage(chatId, "Количество должно быть положительным числом.");
+                return;
+            }
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "Некорректный ввод. Введите положительное число.");
+            return;
+        }
+
+        
+        Double currentAmount = portfolioManagementModule.getPortfolio(user.getId()).get(symbol);
+        if (currentAmount == null || currentAmount < amountToRemove) {
+            sendMessage(chatId, "Недостаточно монет " + symbol + ". Доступно: " +
+                               (currentAmount != null ? currentAmount : 0));
+            return;
+        }
+
+        pendingCommands.remove(chatId);
+
+        
+        cryptoInformationModule.getCurrentPrice(symbol, "USD")
+            .subscribe(priceUsd -> {
+                if (priceUsd == null || priceUsd <= 0) {
+                    sendMessage(chatId, "Не удалось получить текущую цену. Удаление прервано.");
+                    return;
+                }
+                try {
+                    portfolioManagementModule.removeAsset(user.getId(), symbol, amountToRemove, priceUsd);
+                    sendMessage(chatId, "Удалено " + amountToRemove + " " + symbol + " из портфеля.");
+                   
+                    handlePortfolioView(chatId, user);
+                } catch (Exception e) {
+                    sendMessage(chatId, "Ошибка при удалении: " + e.getMessage());
+                }
+            }, error -> {
+                sendMessage(chatId, "Ошибка получения цены: " + error.getMessage());
+            });
+    }
+
+     private void handlePortfolioView(String chatId, User user) {
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (portfolio.isEmpty()) {
+            sendMessage(chatId, "Ваш портфель пуст.");
+            return;
+        }
+
+        String fiat = getUserFiat(user);
+      
+        Flux.fromIterable(portfolio.entrySet())
+            .flatMap(entry -> {
+                String symbol = entry.getKey();
+                double amount = entry.getValue();
+                return cryptoInformationModule.getCurrentPrice(symbol, fiat)
+                        .map(price -> {
+                            if (price == null || price <= 0) {
+                                return symbol + ": " + amount + " шт., цена недоступна";
+                            }
+                            double cost = price * amount;
+                            return String.format("%s: %.4f шт. × %.2f %s = %.2f %s",
+                                    symbol, amount, price, fiat, cost, fiat);
+                        })
+                        .onErrorReturn(symbol + ": ошибка получения цены");
+            })
+            .collectList()
+            .subscribe(lines -> {
+                if (lines.isEmpty()) {
+                    sendMessage(chatId, "Не удалось загрузить данные портфеля.");
+                } else {
+                    sendMessage(chatId, "Ваш портфель:\n" + String.join("\n", lines));
+                }
+            });
+    }
+   
+
+    private void handlePortfolioHistoryStart(String chatId, User user) {
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (portfolio.isEmpty()) {
+            sendMessage(chatId, "Ваш портфель пуст.");
+            return;
+        }
+        List<String> periods = Arrays.asList("1 день", "1 месяц", "1 год", "Назад");
+        ReplyKeyboardMarkup keyboard = createKeyboard(periods, 2);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_HISTORY_PERIOD, null));
+        sendMessage(chatId, "Выберите период для оценки изменения стоимости портфеля:", keyboard);
+    }
+    
+
+    private void handlePortfolioHistoryPeriod(String chatId, User user, String text) {
+        if (text.equalsIgnoreCase("Назад")) {
+            pendingCommands.remove(chatId);
+            sendMessage(chatId, "Операция отменена.");
+            return;
+        }
+
+
+        long days;
+        switch (text) {
+            case "1 день":
+                days = 1L;
+                break;
+            case "1 месяц":
+                days = 30L;
+                break;
+            case "1 год":
+                days = 365L;
+                break;
+            default:
+                sendMessage(chatId, "Пожалуйста, выберите период из списка.");
+                return;
+        }
+        pendingCommands.remove(chatId);
+
+        String fiat = getUserFiat(user);
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+
+       
+        Mono<Double> currentTotalMono = Flux.fromIterable(portfolio.entrySet())
+                .flatMap(e -> cryptoInformationModule.getCurrentPrice(e.getKey(), fiat)
+                        .map(price -> price * e.getValue())
+                        .onErrorReturn(0.0))
+                .reduce(0.0, Double::sum);
+
+        
+        Instant historyPoint = Instant.now().minus(days, ChronoUnit.DAYS);
+
+        Mono<Double> historyTotalMono = Flux.fromIterable(portfolio.entrySet())
+                .flatMap(e -> bingXService.getHistory(e.getKey(), fiat, "1d", (int) days)
+                        .collectList() 
+                        .map(prices -> {
+                            if (prices.isEmpty()) return 0.0;
+                    
+                            double histPrice = prices.get(0);
+                            return histPrice * e.getValue();
+                        })
+                        .onErrorReturn(0.0))
+                .reduce(0.0, Double::sum);
+
+        // Комбинируем результаты
+        currentTotalMono.zipWith(historyTotalMono)
+                .subscribe(tuple -> {
+                    double current = tuple.getT1();
+                    double historical = tuple.getT2();
+                    double diff = current - historical;
+                    double percent = historical != 0 ? (diff / historical) * 100 : 0;
+                    String formatted = String.format("Изменение за %s:\n" +
+                                    "Текущая стоимость: %.2f %s\n" +
+                                    "Стоимость %d дн. назад: %.2f %s\n" +
+                                    "Разница: %.2f %s (%.2f%%)",
+                            text, current, fiat, days, historical, fiat, diff, fiat, percent);
+                    sendMessage(chatId, formatted);
+                }, error -> sendMessage(chatId, "Ошибка при вычислении истории: " + error.getMessage()));
+    }
+    
+
+    private void handlePortfolioCryptoHistory(String chatId, User user) {
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (portfolio.isEmpty()) {
+            sendMessage(chatId, "Ваш портфель пуст.");
+            return;
+        }
+
+        String fiat = getUserFiat(user);
+    
+        Map<String, Double> firstPricesUsd = portfolioManagementModule.getFirstPurchasePrices(user.getId());
+
+     
+        Flux.fromIterable(portfolio.keySet())
+            .flatMap(symbol -> {
+                Double firstPriceUsd = firstPricesUsd.get(symbol);
+                if (firstPriceUsd == null) {
+                    return Mono.just(symbol + ": нет данных о первой покупке.");
+                }
+                return cryptoInformationModule.getCurrentPrice(symbol, fiat)
+                        .map(currentPriceFiat -> {
+                        
+                            return null;  // надо доработать, а то заглушка
+                        });
+            })
+            .collectList()
+            .subscribe(lines -> {
+                sendMessage(chatId, "Изменение с момента первой покупки:\n" + String.join("\n", lines));
+            });
+
+  
+        List<String> resultLines = new ArrayList<>();
+        
+        Map<String, Double> finalFirstPricesUsd = firstPricesUsd;
+        Flux.fromIterable(portfolio.keySet())
+            .flatMap(symbol -> {
+                if (!finalFirstPricesUsd.containsKey(symbol)) {
+                    return Mono.just(symbol + ": нет данных о первой покупке");
+                }
+                double firstPriceUsd = finalFirstPricesUsd.get(symbol);
+                
+                Mono<Double> currentPriceUsdMono = cryptoInformationModule.getCurrentPrice(symbol, "USD");
+                Mono<Double> currentPriceFiatMono = cryptoInformationModule.getCurrentPrice(symbol, fiat);
+                return Mono.zip(currentPriceUsdMono, currentPriceFiatMono)
+                        .map(tuple -> {
+                            double currentUsd = tuple.getT1();
+                            double currentFiat = tuple.getT2();
+                            if (currentUsd <= 0 || currentFiat <= 0) {
+                                return symbol + ": цена недоступна";
+                            }
+                            double diffUsd = currentUsd - firstPriceUsd;
+                            double percent = firstPriceUsd != 0 ? (diffUsd / firstPriceUsd) * 100 : 0;
+                            return String.format("%s: цена покупки %.2f USD, тек. цена %.2f %s (%.2f USD), изменение %+.2f%%",
+                                    symbol, firstPriceUsd, currentFiat, fiat, currentUsd, percent);
+                        })
+                        .onErrorReturn(symbol + ": ошибка получения цены");
+            })
+            .collectList()
+            .subscribe(lines -> {
+                sendMessage(chatId, "Изменение стоимости с момента первой покупки:\n" + String.join("\n", lines));
+            }, error -> sendMessage(chatId, "Ошибка: " + error.getMessage()));
+    }
+
 
     private void sendCurrentFiat(String chatId, User user) {
         sendMessage(chatId, "Current fiat currency: " + getUserFiat(user));
@@ -536,16 +902,28 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private enum PendingAction {
         ADD_TRACKED_CHOOSE,
         ADD_TRACKED_PRICE,
-        REMOVE_TRACKED
+        REMOVE_TRACKED,
+        PORTFOLIO_ADD_CHOOSE_CRYPTO,
+        PORTFOLIO_ADD_AMOUNT,
+        PORTFOLIO_REMOVE_CHOOSE_CRYPTO,
+        PORTFOLIO_REMOVE_AMOUNT,
+        PORTFOLIO_HISTORY_PERIOD       
     }
 
     private static class PendingCommand {
         private final PendingAction action;
         private final String symbol;
+        private final Double extraData;
 
         public PendingCommand(PendingAction action, String symbol) {
             this.action = action;
             this.symbol = symbol;
+        }
+
+        public PendingCommand(PendingAction action, String symbol, Double extraData) {
+            this.action = action;
+            this.symbol = symbol;
+            this.extraData = extraData;
         }
     }
 }
