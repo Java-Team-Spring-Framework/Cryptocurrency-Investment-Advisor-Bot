@@ -17,11 +17,13 @@ public class CryptoInformationModule {
     private final BingXService bingXService;
     private final DSLContext dsl;
     private final RabbitMQService rabbitMQService;
+    private final FiatConversionService fiatConversionService;
 
-    public CryptoInformationModule(BingXService bingXService, DSLContext dsl, RabbitMQService rabbitMQService) {
+    public CryptoInformationModule(BingXService bingXService, DSLContext dsl, RabbitMQService rabbitMQService, FiatConversionService fiatConversionService) {
         this.bingXService = bingXService;
         this.dsl = dsl;
         this.rabbitMQService = rabbitMQService;
+        this.fiatConversionService = fiatConversionService;
     }
 
     public Mono<Double> getCurrentPrice(String symbol, String fiat) {
@@ -39,6 +41,11 @@ public class CryptoInformationModule {
             return false;
         }
 
+        Double storedTargetPriceUsd = null;
+        if (targetPrice != null && targetPrice > 0) {
+            storedTargetPriceUsd = convertAmountToUsd(targetPrice, fiatSymbol);
+        }
+
         Long exists = dsl.select(field("tracked_currency_id"))
                 .from(table("tracked_currency"))
                 .where(field("user_id").eq(userId))
@@ -49,7 +56,7 @@ public class CryptoInformationModule {
         if (exists == null) {
             trackedCurrencyId = dsl.insertInto(table("tracked_currency"),
                     field("user_id"), field("crypto_currency_id"), field("target_price"))
-                    .values(userId, cryptoId, targetPrice)
+                    .values(userId, cryptoId, storedTargetPriceUsd)
                     .returning(field("tracked_currency_id"))
                     .fetchOne()
                     .get(field("tracked_currency_id"), Integer.class);
@@ -62,15 +69,15 @@ public class CryptoInformationModule {
             Double currentPriceUsd = getCurrentPrice(normalizedSymbol, "USD").block();
             if (currentPriceUsd == null) currentPriceUsd = 0.0;
             
-            // 1. 24h Percent Change Task
-            rabbitMQService.sendAlertCheckDelayed24h(AlertCheckMessage.percentChange(userId, chatId, trackedCurrencyId, null, normalizedSymbol, fiatSymbol, 5.0, currentPriceUsd));
+            // 1. 24h Percent Change Task always in USD
+            rabbitMQService.sendAlertCheckDelayed24h(AlertCheckMessage.percentChange(userId, chatId, trackedCurrencyId, null, normalizedSymbol, "USD", 5.0, currentPriceUsd));
         } else {
             trackedCurrencyId = exists.intValue();
         }
 
         // Add to user_alert table if targetPrice > 0
-        if (targetPrice != null && targetPrice > 0) {
-            addUserAlert(userId, normalizedSymbol, "PRICE", targetPrice, fiatSymbol);
+        if (storedTargetPriceUsd != null && storedTargetPriceUsd > 0) {
+            addUserAlert(userId, normalizedSymbol, "PRICE", storedTargetPriceUsd, "USD");
         }
 
         return true;
@@ -78,10 +85,19 @@ public class CryptoInformationModule {
 
     public Integer addUserAlert(Long userId, String symbol, String type, Double targetValue, String fiatSymbol) {
         String normalizedSymbol = symbol.toUpperCase();
+        String normalizedFiatSymbol = fiatSymbol != null ? fiatSymbol.toUpperCase() : "USD";
         Double basePrice = null;
+
+        if ("PRICE".equalsIgnoreCase(type) && targetValue != null && targetValue > 0) {
+            if (!"USD".equalsIgnoreCase(normalizedFiatSymbol)) {
+                targetValue = convertAmountToUsd(targetValue, normalizedFiatSymbol);
+                normalizedFiatSymbol = "USD";
+            }
+        }
+
         if ("PERCENT".equalsIgnoreCase(type)) {
             try {
-                basePrice = getCurrentPrice(normalizedSymbol, fiatSymbol).block();
+                basePrice = getCurrentPrice(normalizedSymbol, normalizedFiatSymbol).block();
             } catch (Exception e) {
                 // Log and ignore, will be updated by consumer later
             }
@@ -90,7 +106,7 @@ public class CryptoInformationModule {
         
         Integer alertId = dsl.insertInto(table("user_alert"),
                 field("user_id"), field("symbol"), field("alert_type"), field("target_value"), field("base_price"), field("fiat_symbol"))
-                .values(userId, normalizedSymbol, type, targetValue, basePrice, fiatSymbol)
+                .values(userId, normalizedSymbol, type, targetValue, basePrice, normalizedFiatSymbol)
                 .returning(field("alert_id"))
                 .fetchOne()
                 .get(field("alert_id"), Integer.class);
@@ -173,8 +189,13 @@ public class CryptoInformationModule {
             return false;
         }
 
+        Double storedTargetPriceUsd = targetPrice;
+        if (!"USD".equalsIgnoreCase(fiatSymbol)) {
+            storedTargetPriceUsd = convertAmountToUsd(targetPrice, fiatSymbol);
+        }
+
         org.jooq.Record record = dsl.update(table("tracked_currency"))
-                .set(field("target_price"), targetPrice)
+                .set(field("target_price"), storedTargetPriceUsd)
                 .where(field("user_id").eq(userId))
                 .and(field("crypto_currency_id").eq(cryptoId))
                 .returning(field("tracked_currency_id"))
@@ -208,6 +229,20 @@ public class CryptoInformationModule {
                 .map(record -> new TrackedCryptoInfo(
                         record.get(field("c.symbol"), String.class),
                         record.get(field("t.target_price"), Double.class)));
+    }
+
+    private Double convertAmountToUsd(Double amount, String fiatSymbol) {
+        if (amount == null) {
+            return null;
+        }
+        if (fiatSymbol == null || fiatSymbol.equalsIgnoreCase("USD")) {
+            return amount;
+        }
+        Double rate = fiatConversionService.getFiatRate(fiatSymbol, "USD").block();
+        if (rate == null || rate <= 0) {
+            return amount;
+        }
+        return amount * rate;
     }
 
     public void ensureDefaultTrackedCurrency(Long userId) {

@@ -566,7 +566,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         for (String symbol : tracked) {
             Double price = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
             if (price != null && price > 0) {
-                lines.add(symbol + ": " + String.format("%.2f", price) + " " + fiat + " (Default 5% 24h alert active)");
+                lines.add(symbol + ": " + String.format("%.2f", price) + " " + fiat);
             } else {
                 lines.add(symbol + ": price unavailable");
             }
@@ -849,12 +849,30 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             return;
         }
 
+        String userFiat = getUserFiat(user);
         StringBuilder sb = new StringBuilder("Your active custom alerts:\n");
         for (CryptoInformationModule.UserAlertInfo alert : alerts) {
-            sb.append(String.format(java.util.Locale.US, "ID: %d | %s | %s | Target: %.4f %s\n", 
-                alert.getId(), alert.getSymbol(), alert.getType(), alert.getTargetValue(), alert.getType().equals("PERCENT") ? "%" : alert.getFiatSymbol()));
+            String formattedTarget = formatAlertTargetValue(alert, userFiat);
+            sb.append(String.format(java.util.Locale.US, "ID: %d | %s | %s | Target: %s\n",
+                alert.getId(), alert.getSymbol(), alert.getType(), formattedTarget));
         }
         sendMessage(chatId, sb.toString());
+    }
+
+    private String formatAlertTargetValue(CryptoInformationModule.UserAlertInfo alert, String userFiat) {
+        if (alert.getType().equalsIgnoreCase("PERCENT")) {
+            return String.format(java.util.Locale.US, "%.4f%%", alert.getTargetValue());
+        }
+
+        String alertFiat = alert.getFiatSymbol() != null ? alert.getFiatSymbol().toUpperCase() : "USD";
+        double targetValue = alert.getTargetValue() != null ? alert.getTargetValue() : 0.0;
+        if (!userFiat.equalsIgnoreCase(alertFiat)) {
+            Double rate = fiatConversionService.getFiatRate(alertFiat, userFiat).block();
+            if (rate != null && rate > 0) {
+                targetValue = targetValue * rate;
+            }
+        }
+        return String.format(java.util.Locale.US, "%.4f %s", targetValue, userFiat);
     }
 
     private void handleDeleteAlertStart(String chatId, User user) {
