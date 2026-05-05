@@ -34,6 +34,7 @@ public class AlertsHandlingModule implements InitializingBean {
     private final TelegramBotService telegramBotService;
     private final RabbitMQService rabbitMQService;
     private final RabbitAdmin rabbitAdmin;
+    private final org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry rabbitListenerEndpointRegistry;
 
     // Track active alerts for logging to file
     private final Map<String, String> activeAlertsStatus = new ConcurrentHashMap<>();
@@ -41,12 +42,14 @@ public class AlertsHandlingModule implements InitializingBean {
     public AlertsHandlingModule(DSLContext dsl, BingXService bingXService, 
                                 TelegramBotService telegramBotService, 
                                 RabbitMQService rabbitMQService,
-                                RabbitAdmin rabbitAdmin) {
+                                RabbitAdmin rabbitAdmin,
+                                org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry rabbitListenerEndpointRegistry) {
         this.dsl = dsl;
         this.bingXService = bingXService;
         this.telegramBotService = telegramBotService;
         this.rabbitMQService = rabbitMQService;
         this.rabbitAdmin = rabbitAdmin;
+        this.rabbitListenerEndpointRegistry = rabbitListenerEndpointRegistry;
         telegramBotService.setAlertsHandlingModule(this);
     }
 
@@ -59,7 +62,31 @@ public class AlertsHandlingModule implements InitializingBean {
         } catch (Exception e) {
             log.error("Failed to initialize RabbitMQ Admin: {}", e.getMessage());
         }
+        try {
+            rabbitListenerEndpointRegistry.start();
+            log.info("RabbitListenerEndpointRegistry manually started");
+        } catch (Exception e) {
+            log.error("Failed to start listener registry: {}", e.getMessage());
+        }
         initQueueFromDb();
+
+        new Thread(() -> {
+            log.info("Starting manual RabbitMQ poller for debugging...");
+            while (true) {
+                try {
+                    org.springframework.amqp.core.Message message = rabbitMQService.getRabbitTemplate().receive(RabbitConfig.QUEUE_ALERTS_CHECK, 2000);
+                    if (message != null) {
+                        String body = new String(message.getBody());
+                        log.error("!!! MANUAL POLLER RECEIVED MESSAGE: {}", body);
+                        // Convert manually
+                        AlertCheckMessage task = new com.fasterxml.jackson.databind.ObjectMapper().readValue(body, AlertCheckMessage.class);
+                        processAlertCheck(task);
+                    }
+                } catch (Exception e) {
+                    log.error("Manual poller error: {}", e.getMessage());
+                }
+            }
+        }).start();
     }
 
     private void initQueueFromDb() {
@@ -131,11 +158,12 @@ public class AlertsHandlingModule implements InitializingBean {
                 AlertCheckMessage.Direction direction = (currentPriceFiat < targetValue) ? AlertCheckMessage.Direction.UP : AlertCheckMessage.Direction.DOWN;
                 msg = AlertCheckMessage.threshold(userId, chatId, null, alertId, symbol, fiatSymbol, targetValue, direction);
                 rabbitMQService.sendAlertCheck(msg);
+                activeAlertsStatus.put(msg.getId(), String.format(java.util.Locale.US, "CUSTOM %s - Symbol: %s, User: %d, Target: %.4f %s", type, symbol, userId, targetValue, fiatSymbol));
             } else {
                 msg = AlertCheckMessage.percentChange(userId, chatId, null, alertId, symbol, fiatSymbol, targetValue, basePrice);
                 rabbitMQService.sendAlertCheck(msg);
+                activeAlertsStatus.put(msg.getId(), String.format(java.util.Locale.US, "CUSTOM %s - Symbol: %s, User: %d, Target: %.4f%%", type, symbol, userId, targetValue));
             }
-            activeAlertsStatus.put(msg.getId(), String.format(java.util.Locale.US, "CUSTOM %s - Symbol: %s, User: %d, Target: %.4f %s", type, symbol, userId, targetValue, fiatSymbol));
         }
         
         log.info("Synchronized {} tracked currencies and {} custom alerts with RabbitMQ", trackedRecords.size(), alertRecords.size());
@@ -143,7 +171,8 @@ public class AlertsHandlingModule implements InitializingBean {
 
     @RabbitListener(queues = RabbitConfig.QUEUE_ALERTS_CHECK, containerFactory = "rabbitListenerContainerFactory")
     public void processAlertCheck(AlertCheckMessage task) {
-        log.info("Processing Alert Check: id={}, type={}, symbol={}", task.getId(), task.getType(), task.getSymbol());
+        System.out.println(">>> CONSUMER TRIGGERED FOR " + task.getSymbol() + " <<<");
+        log.error(">>> CONSUMER TRIGGERED FOR: id={}, type={}, symbol={} <<<", task.getId(), task.getType(), task.getSymbol());
         
         if (!Boolean.TRUE.equals(task.getActive())) {
             log.debug("Task {} is inactive, skipping", task.getId());
@@ -325,14 +354,69 @@ public class AlertsHandlingModule implements InitializingBean {
     }
 
     public String getActiveAlertsStatusString() {
-        if (activeAlertsStatus.isEmpty()) {
-            return "No active alerts in memory.";
+        StringBuilder sb = new StringBuilder("=== Active Alerts Detailed Status ===\n");
+        sb.append("Current Time: ").append(LocalDateTime.now()).append("\n\n");
+
+        sb.append("--- Custom User Alerts ---\n");
+        var alertRecords = dsl.select(
+                field("ua.alert_id"),
+                field("ua.symbol"),
+                field("ua.alert_type"),
+                field("ua.target_value"),
+                field("ua.base_price"),
+                field("ua.fiat_symbol")
+        ).from(table("user_alert").as("ua"))
+         .fetch();
+
+        if (alertRecords.isEmpty()) {
+            sb.append("No active custom alerts.\n");
         }
-        StringBuilder sb = new StringBuilder("=== Active Alerts Status ===\n");
-        sb.append("Timestamp: ").append(LocalDateTime.now()).append("\n\n");
-        for (Map.Entry<String, String> entry : activeAlertsStatus.entrySet()) {
-            sb.append(entry.getValue()).append("\n");
+
+        for (Record r : alertRecords) {
+            Integer id = r.get(field("ua.alert_id"), Integer.class);
+            String symbol = r.get(field("ua.symbol"), String.class);
+            String type = r.get(field("ua.alert_type"), String.class);
+            Double target = r.get(field("ua.target_value"), Double.class);
+            Double base = r.get(field("ua.base_price"), Double.class);
+            String fiat = r.get(field("ua.fiat_symbol"), String.class);
+
+            Double currentPrice = null;
+            try {
+                currentPrice = bingXService.getPrice(symbol, fiat).block();
+            } catch (Exception e) {
+                log.error("Status check: failed to get price for {}", symbol, e);
+            }
+
+            if ("PERCENT".equalsIgnoreCase(type)) {
+                if (base == null || base == 0.0) {
+                    sb.append(String.format(java.util.Locale.US, "ID %d: [PERCENT] %s | Target: %.4f%% | Base Price: WAITING FOR CONSUMER | Current Price: %s\n",
+                            id, symbol, target, currentPrice != null ? String.format(java.util.Locale.US, "%.4f %s", currentPrice, fiat) : "ERROR"));
+                } else {
+                    double percentChange = currentPrice != null ? ((currentPrice - base) / base) * 100.0 : 0.0;
+                    sb.append(String.format(java.util.Locale.US, "ID %d: [PERCENT] %s | Target: %.4f%% | Base Price (at setup): %.4f %s | Current Price: %s | Current Change: %+.4f%%\n",
+                            id, symbol, target, base, fiat, currentPrice != null ? String.format(java.util.Locale.US, "%.4f %s", currentPrice, fiat) : "ERROR", percentChange));
+                }
+            } else {
+                sb.append(String.format(java.util.Locale.US, "ID %d: [PRICE] %s | Target Price: %.4f %s | Current Price: %s\n",
+                        id, symbol, target, fiat, currentPrice != null ? String.format(java.util.Locale.US, "%.4f %s", currentPrice, fiat) : "ERROR"));
+            }
         }
+
+        sb.append("\n--- Default 5% 24h Alerts ---\n");
+        var trackedRecords = dsl.select(
+                        field("tc.tracked_currency_id"),
+                        field("c.symbol"))
+                .from(table("tracked_currency").as("tc"))
+                .join(table("crypto_currency").as("c")).on(field("tc.crypto_currency_id").eq(field("c.crypto_currency_id")))
+                .fetch();
+
+        if (trackedRecords.isEmpty()) {
+            sb.append("No default alerts.\n");
+        } else {
+            sb.append(trackedRecords.size()).append(" default alerts active in background.\n");
+            // Optionally, we could list them too, but it might be too long.
+        }
+
         return sb.toString();
     }
 

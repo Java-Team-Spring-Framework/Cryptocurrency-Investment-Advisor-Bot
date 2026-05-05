@@ -37,4 +37,8 @@ public class RabbitMQService {
     public void sendNotification(NotificationMessage message) {
         rabbitTemplate.convertAndSend(RabbitConfig.QUEUE_NOTIFICATIONS, message);
     }
+
+    public RabbitTemplate getRabbitTemplate() {
+        return rabbitTemplate;
+    }
 }
