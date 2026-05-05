@@ -10,6 +10,8 @@ public class Application {
 
     public static void main(String[] args) {
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext("ru.spbstu.cryptoadvisor");
+        context.start(); // Start SmartLifecycle beans like RabbitListenerEndpointRegistry
+        
         HttpHandler httpHandler = WebHttpHandlerBuilder.applicationContext(context).build();
         ReactorHttpHandlerAdapter adapter = new ReactorHttpHandlerAdapter(httpHandler);
 

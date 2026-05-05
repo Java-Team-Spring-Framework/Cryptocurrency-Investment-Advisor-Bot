@@ -15,10 +15,26 @@ public class RabbitMQService {
     }
 
     public void logActivity(String userId, String activity) {
-        rabbitTemplate.convertAndSend("crypto.logs", Map.of(
+        rabbitTemplate.convertAndSend(RabbitConfig.QUEUE_LOGS, Map.of(
                 "userId", userId,
                 "activity", activity,
                 "timestamp", System.currentTimeMillis()
         ));
+    }
+
+    public void sendAlertCheck(AlertCheckMessage message) {
+        rabbitTemplate.convertAndSend(RabbitConfig.QUEUE_ALERTS_CHECK, message);
+    }
+
+    public void sendAlertCheckDelayed(AlertCheckMessage message) {
+        rabbitTemplate.convertAndSend(RabbitConfig.DELAY_QUEUE, message);
+    }
+    
+    public void sendAlertCheckDelayed24h(AlertCheckMessage message) {
+        rabbitTemplate.convertAndSend(RabbitConfig.DELAY_QUEUE_24H, message);
+    }
+
+    public void sendNotification(NotificationMessage message) {
+        rabbitTemplate.convertAndSend(RabbitConfig.QUEUE_NOTIFICATIONS, message);
     }
 }

@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS transaction (
 CREATE TABLE IF NOT EXISTS alert_history (
     record_alert_id SERIAL PRIMARY KEY,
     tracked_currency_id INTEGER REFERENCES tracked_currency(tracked_currency_id),
-    date_record TIMESTAMP NOT NULL
+    date_record TIMESTAMP NOT NULL,
+    alert_reason VARCHAR(100) NOT NULL DEFAULT 'UNKNOWN'
 );
 
 CREATE TABLE IF NOT EXISTS llm_history (
@@ -54,6 +55,16 @@ CREATE TABLE IF NOT EXISTS llm_history (
     user_request TEXT NOT NULL,
     llm_response TEXT NOT NULL,
     request_type VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_alert (
+    alert_id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES "user"(user_id),
+    symbol VARCHAR(20) NOT NULL,
+    alert_type VARCHAR(20) NOT NULL, -- 'PRICE' or 'PERCENT'
+    target_value DECIMAL(20, 8) NOT NULL,
+    base_price DECIMAL(20, 8),
+    fiat_symbol VARCHAR(10)
 );
 
 -- Insert default fiat currencies
@@ -75,3 +86,16 @@ INSERT INTO crypto_currency (symbol, name) VALUES ('DOGE', 'Dogecoin') ON CONFLI
 INSERT INTO crypto_currency (symbol, name) VALUES ('AVAX', 'Avalanche') ON CONFLICT (symbol) DO NOTHING;
 INSERT INTO crypto_currency (symbol, name) VALUES ('NEAR', 'NEAR Protocol') ON CONFLICT (symbol) DO NOTHING;
 INSERT INTO crypto_currency (symbol, name) VALUES ('LTC', 'Litecoin') ON CONFLICT (symbol) DO NOTHING;
+
+-- Migration: add alert_reason column if missing (for existing databases)
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='alert_history' AND column_name='alert_reason') THEN
+        ALTER TABLE alert_history ADD COLUMN alert_reason VARCHAR(100) NOT NULL DEFAULT 'UNKNOWN';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='alert_history' AND column_name='user_id') THEN
+        ALTER TABLE alert_history ADD COLUMN user_id INTEGER REFERENCES "user"(user_id);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='alert_history' AND column_name='symbol') THEN
+        ALTER TABLE alert_history ADD COLUMN symbol VARCHAR(20);
+    END IF;
+END $$;

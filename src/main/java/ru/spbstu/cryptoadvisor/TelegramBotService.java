@@ -13,7 +13,6 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.Keyboard
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
-import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -48,6 +47,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private final UserRepository userRepository;
     private final BingXService bingXService;
     private final FiatConversionService fiatConversionService;
+    private final RabbitMQService rabbitMQService;
+    private AlertsHandlingModule alertsHandlingModule;
     private final Map<String, PendingCommand> pendingCommands = new ConcurrentHashMap<>();
 
     public TelegramBotService(AuthUserModule authUserModule,
@@ -56,7 +57,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                               MessageHandlingModule messageHandlingModule,
                               UserRepository userRepository,
                               BingXService bingXService,
-                              FiatConversionService fiatConversionService) {
+                              FiatConversionService fiatConversionService,
+                              RabbitMQService rabbitMQService) {
         this.botToken = System.getenv("TELEGRAM_BOT_TOKEN");
         this.authUserModule = authUserModule;
         this.cryptoInformationModule = cryptoInformationModule;
@@ -65,6 +67,12 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         this.userRepository = userRepository;
         this.bingXService = bingXService;
         this.fiatConversionService = fiatConversionService;
+        this.rabbitMQService = rabbitMQService;
+    }
+
+    /** Setter to avoid circular dependency with AlertsHandlingModule */
+    public void setAlertsHandlingModule(AlertsHandlingModule alertsHandlingModule) {
+        this.alertsHandlingModule = alertsHandlingModule;
     }
 
     @Override
@@ -97,6 +105,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             if ("/start".equals(command)) {
                 User newUser = authUserModule.registerUser(chatId, username);
                 cryptoInformationModule.ensureDefaultTrackedCurrency(newUser.getId());
+                rabbitMQService.logActivity(chatId, "User registered: " + (username != null ? username : "unknown"));
                 sendMessage(chatId, "Welcome " + (username != null ? username : "") + "! Registration complete.");
             } else {
                 sendMessage(chatId, "Please /start first.");
@@ -109,7 +118,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         if (pending != null) {
             if (BTN_BACK.equals(text)) {
                 pendingCommands.remove(chatId);
-                sendMainMenu(chatId, "Действие отменено.");
+                sendMainMenu(chatId, "Action cancelled.");
                 return;
             }
             switch (pending.action) {
@@ -121,6 +130,33 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                     return;
                 case REMOVE_TRACKED:
                     handlePendingRemoveTracked(chatId, user, text);
+                    return;
+                case PORTFOLIO_ADD_CHOOSE_CRYPTO:
+                    handlePortfolioAddChoose(chatId, user, text);
+                    return;
+                case PORTFOLIO_ADD_AMOUNT:
+                    handlePortfolioAddAmount(chatId, user, text, pending.symbol);
+                    return;
+                case PORTFOLIO_REMOVE_CHOOSE_CRYPTO:
+                    handlePortfolioRemoveChoose(chatId, user, text);
+                    return;
+                case PORTFOLIO_REMOVE_AMOUNT:
+                    handlePortfolioRemoveAmount(chatId, user, text, pending.symbol);
+                    return;
+                case PORTFOLIO_HISTORY_PERIOD:
+                    handlePortfolioHistoryPeriod(chatId, user, text);
+                    return;
+                case SET_ALERT_CHOOSE:
+                    handleSetAlertChoose(chatId, user, text);
+                    return;
+                case SET_ALERT_TYPE:
+                    handleSetAlertType(chatId, user, text, pending.symbol);
+                    return;
+                case SET_ALERT_VALUE:
+                    handleSetAlertValue(chatId, user, text, pending.symbol, pending.alertType);
+                    return;
+                case DELETE_ALERT_CHOOSE:
+                    handleDeleteAlertChoose(chatId, user, text);
                     return;
                 default:
                     break;
@@ -201,22 +237,13 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 }
                 break;
             case "/portfolio_add":
-                if (parts.length > 3) {
-                    portfolioManagementModule.addAsset(user.getId(), parts[1], Double.parseDouble(parts[2]), Double.parseDouble(parts[3]));
-                    sendMessage(chatId, "Added " + parts[2] + " " + parts[1] + " to your portfolio");
-                } else {
-                    sendMessage(chatId, "Usage: /portfolio_add <symbol> <amount> <price_at_purchase>");
-                }
+                sendPortfolioAddChooseCrypto(chatId);
+                break;
+            case "/portfolio_remove":
+                handlePortfolioRemoveStart(chatId, user);
                 break;
             case "/portfolio":
-                Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
-                if (portfolio.isEmpty()) {
-                    sendMessage(chatId, "Your portfolio is empty.");
-                } else {
-                    StringBuilder sb = new StringBuilder("Your portfolio:\n");
-                    portfolio.forEach((s, a) -> sb.append(s).append(": ").append(a).append("\n"));
-                    sendMessage(chatId, sb.toString());
-                }
+                handlePortfolioView(chatId, user);
                 break;
             case "/llm_analyze":
                 if (parts.length > 1) {
@@ -248,25 +275,32 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 }
                 break;
             case "/portfolio_amount":
-                Map<String, Double> port = portfolioManagementModule.getPortfolio(user.getId());
-                if (port.isEmpty()) {
-                    sendMessage(chatId, "Your portfolio is empty.");
+                handlePortfolioAmount(chatId, user);
+                break;
+            case "/portfolio_history":
+                handlePortfolioHistoryStart(chatId, user);
+                break;
+            case "/portfolio_crypto_history":
+                handlePortfolioCryptoHistory(chatId, user);
+                break;
+            case "/alerts":
+                handleAlertsCommand(chatId, user);
+                break;
+            case "/set_alert":
+                handleSetAlertStart(chatId, user);
+                break;
+            case "/alerts_list":
+                handleAlertsList(chatId, user);
+                break;
+            case "/alerts_status":
+                if (alertsHandlingModule != null) {
+                    sendMessage(chatId, alertsHandlingModule.getActiveAlertsStatusString());
                 } else {
-                    String fiat = getUserFiat(user);
-                    double total = 0;
-
-                    for (Map.Entry<String, Double> e : port.entrySet()) {
-                        Double price = cryptoInformationModule
-                                .getCurrentPrice(e.getKey(), fiat)
-                                .block();
-
-                        if (price != null) {
-                            total += price * e.getValue();
-                        }
-                    }
-
-sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
+                    sendMessage(chatId, "Alerts module not initialized.");
                 }
+                break;
+            case "/delete_alert":
+                handleDeleteAlertStart(chatId, user);
                 break;
             case "/compare":
                 if (parts.length > 2) {
@@ -349,14 +383,21 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
                         "/remove_tracked_crypto - Remove tracked crypto\n" +
                         "/tracked - View tracked cryptos\n" +
                         "/price_crypto <symbol> - Get current price\n" +
-                        "/portfolio_add <symbol> <amt> <price> - Add to portfolio\n" +
-                        "/portfolio - View portfolio\n" +
-                        "/portfolio_amount - View portfolio value\n" +
-                        "/llm_analyze <symbol> - Get LLM investment analysis for a crypto\n" +
-                        "/llm_portfolio - Get LLM review of your portfolio\n" +
-                        "/compare <symbol1> <symbol2> - Compare prices of two cryptos\n" +
+                        "/portfolio_add - Add asset to portfolio\n" +
+                        "/portfolio_remove - Remove asset from portfolio\n" +
+                        "/portfolio - View portfolio with prices\n" +
+                        "/portfolio_amount - View total portfolio value\n" +
+                        "/portfolio_history - Portfolio value change over period\n" +
+                        "/portfolio_crypto_history - Per-crypto change since purchase\n" +
+                        "/set_alert - Create a custom alert (Price or Percent)\n" +
+                        "/alerts_list - View your active custom alerts\n" +
+                        "/delete_alert - Delete a custom alert\n" +
+                        "/alerts - View recent alert history (last 7 days)\n" +
+                        "/compare <symbol1> <symbol2> - Compare two cryptos\n" +
                         "/price_history <symbol> <days> - View price history\n" +
-                        "/llm_ask <question> - Ask the LLM about crypto markets");
+                        "/llm_analyze <symbol> - LLM investment analysis\n" +
+                        "/llm_portfolio - LLM portfolio review\n" +
+                        "/llm_ask <question> - Ask the LLM about crypto");
                 break;
             default:
                 if (isAllowedFiat(text)) {
@@ -404,10 +445,10 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
                 sendMessage(chatId, "Price cannot be negative. Please use a non-negative value.");
                 return;
             }
-            if (!cryptoInformationModule.addTrackedCurrency(user.getId(), normalized, targetPrice)) {
+            if (!cryptoInformationModule.addTrackedCurrency(user.getId(), normalized, targetPrice, getUserFiat(user))) {
                 sendMessage(chatId, "Currency " + normalized + " is already tracked or unsupported.");
             } else {
-                sendMessage(chatId, "Added " + normalized + " to watchlist with target price " + targetPriceText + ".");
+                sendMessage(chatId, "Added " + normalized + " to watchlist with target price " + targetPriceText + " " + getUserFiat(user) + ".");
             }
         } catch (NumberFormatException e) {
             sendMessage(chatId, "Please enter a valid numeric price. Usage: /add_tracked_crypto <symbol> <target_price>");
@@ -428,44 +469,33 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
         }
         List<String> tracked = cryptoInformationModule.getTrackedCurrencies(user.getId());
         if (tracked.contains(normalized)) {
-            if (normalized.equals("BTC") && tracked.size() == 1) {
-                // Check if target price is 0
-                List<CryptoInformationModule.TrackedCryptoInfo> infos = cryptoInformationModule.getTrackedCurrencyInfo(user.getId());
-                Optional<CryptoInformationModule.TrackedCryptoInfo> btcInfo = infos.stream().filter(i -> i.getSymbol().equals("BTC")).findFirst();
-                if (btcInfo.isPresent() && btcInfo.get().getTargetPrice() == 0.0) {
-                    // Allow updating target for default BTC with 0 price
-                    pendingCommands.put(chatId, new PendingCommand(PendingAction.ADD_TRACKED_PRICE, normalized));
-                    sendMessage(chatId, "Enter the target price for " + normalized + " in " + getUserFiat(user) + ":");
-                } else {
-                    sendMessage(chatId, "Currency " + normalized + " is already tracked.");
-                    pendingCommands.remove(chatId);
-                }
-            } else {
-                sendMessage(chatId, "Currency " + normalized + " is already tracked.");
-                pendingCommands.remove(chatId);
-            }
+            sendMessage(chatId, "Currency " + normalized + " is already tracked.");
+            pendingCommands.remove(chatId);
             return;
         }
         pendingCommands.put(chatId, new PendingCommand(PendingAction.ADD_TRACKED_PRICE, normalized));
-        sendMessage(chatId, "Enter the target price for " + normalized + " in " + getUserFiat(user) + ":");
+        String fiatTrk = getUserFiat(user);
+        Double curPrice = cryptoInformationModule.getCurrentPrice(normalized, fiatTrk).block();
+        String priceInfo = (curPrice != null && curPrice > 0)
+                ? "Current price of " + normalized + ": " + String.format("%.2f", curPrice) + " " + fiatTrk + "\n"
+                : "";
+        sendMessage(chatId, priceInfo + "Enter the target price for " + normalized + " in " + fiatTrk + " (enter 0 to skip custom price alert):");
     }
 
     private void handlePendingAddTrackedPrice(String chatId, User user, String text, String symbol) {
         try {
             double targetPrice = Double.parseDouble(text);
             if (targetPrice < 0) {
-                sendMessage(chatId, "Price cannot be negative. Please enter a non-negative target price for " + symbol + ".");
+                sendMessage(chatId, "Price cannot be negative.");
                 return;
             }
-            if (cryptoInformationModule.addTrackedCurrency(user.getId(), symbol, targetPrice)) {
-                sendMainMenu(chatId, "Added " + symbol + " to watchlist with target price " + targetPrice + ".");
-            } else {
-                // Try update if already exists
-                if (cryptoInformationModule.updateTargetPrice(user.getId(), symbol, targetPrice)) {
-                    sendMessage(chatId, "Updated target price for " + symbol + " to " + targetPrice + ".");
-                } else {
-                    sendMessage(chatId, "Could not add or update " + symbol + ".");
+            if (cryptoInformationModule.addTrackedCurrency(user.getId(), symbol, targetPrice, getUserFiat(user))) {
+                sendMainMenu(chatId, "Added " + symbol + " to watchlist. Every 24h you will receive notifications for 5% changes.");
+                if (targetPrice > 0) {
+                    sendMessage(chatId, "Custom price alert for " + symbol + " created with target " + targetPrice + " " + getUserFiat(user) + ".");
                 }
+            } else {
+                sendMessage(chatId, "Could not add " + symbol + ".");
             }
             pendingCommands.remove(chatId);
         } catch (NumberFormatException e) {
@@ -525,28 +555,395 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
     }
 
     private void sendTrackedList(String chatId, User user) {
-        List<CryptoInformationModule.TrackedCryptoInfo> tracked = cryptoInformationModule.getTrackedCurrencyInfo(user.getId());
+        List<String> tracked = cryptoInformationModule.getTrackedCurrencies(user.getId());
         if (tracked.isEmpty()) {
             cryptoInformationModule.ensureDefaultTrackedCurrency(user.getId());
-            tracked = cryptoInformationModule.getTrackedCurrencyInfo(user.getId());
+            tracked = cryptoInformationModule.getTrackedCurrencies(user.getId());
         }
         String fiat = getUserFiat(user);
-        if (tracked.isEmpty()) {
-            sendMessage(chatId, "No tracked cryptocurrencies.");
-            return;
-        }
 
         List<String> lines = new ArrayList<>();
-        for (CryptoInformationModule.TrackedCryptoInfo info : tracked) {
-            Double price = cryptoInformationModule.getCurrentPrice(info.getSymbol(), fiat).block();
+        for (String symbol : tracked) {
+            Double price = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
             if (price != null && price > 0) {
-                lines.add(info.getSymbol() + ": " + String.format("%.2f", price) + " " + fiat + " (target: " + info.getTargetPrice() + " " + fiat + ")");
+                lines.add(symbol + ": " + String.format("%.2f", price) + " " + fiat + " (Default 5% 24h alert active)");
             } else {
-                lines.add(info.getSymbol() + ": price unavailable (target: " + info.getTargetPrice() + " " + fiat + ")");
+                lines.add(symbol + ": price unavailable");
             }
         }
 
         sendMessage(chatId, "Tracked cryptocurrencies:\n" + String.join("\n", lines));
+    }
+
+    // ===================== PORTFOLIO: Interactive Add =====================
+
+    private void sendPortfolioAddChooseCrypto(String chatId) {
+        ReplyKeyboardMarkup keyboard = createKeyboard(CRYPTO_SYMBOLS, 3);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_ADD_CHOOSE_CRYPTO, null));
+        sendMessage(chatId, "Choose a cryptocurrency to add to your portfolio:", keyboard);
+    }
+
+    private void handlePortfolioAddChoose(String chatId, User user, String text) {
+        String symbol = text.toUpperCase();
+        if (!isAllowedCrypto(symbol)) {
+            sendMessage(chatId, "Please choose from the list: " + String.join(", ", CRYPTO_SYMBOLS));
+            return;
+        }
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_ADD_AMOUNT, symbol));
+        sendMessage(chatId, "Enter the number of " + symbol + " coins to add:");
+    }
+
+    private void handlePortfolioAddAmount(String chatId, User user, String text, String symbol) {
+        double amount;
+        try {
+            amount = Double.parseDouble(text);
+            if (amount <= 0) {
+                sendMessage(chatId, "Amount must be a positive number.");
+                pendingCommands.remove(chatId);
+                return;
+            }
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "Invalid input. Please enter a positive number.");
+            pendingCommands.remove(chatId);
+            return;
+        }
+        pendingCommands.remove(chatId);
+        Double priceUsd = cryptoInformationModule.getCurrentPrice(symbol, "USD").block();
+        if (priceUsd == null || priceUsd <= 0) {
+            sendMessage(chatId, "Could not fetch current price for " + symbol + ". Please try again later.");
+            return;
+        }
+        try {
+            portfolioManagementModule.addAsset(user.getId(), symbol, amount, priceUsd);
+            sendMessage(chatId, "Added " + amount + " " + symbol + " at $" + String.format("%.2f", priceUsd) + " per coin.");
+            handlePortfolioView(chatId, user);
+        } catch (Exception e) {
+            sendMessage(chatId, "Error adding asset: " + e.getMessage());
+        }
+    }
+
+    // ===================== PORTFOLIO: Interactive Remove =====================
+
+    private void handlePortfolioRemoveStart(String chatId, User user) {
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (portfolio.isEmpty()) {
+            sendMessage(chatId, "Your portfolio is empty.");
+            return;
+        }
+        List<String> symbols = new ArrayList<>(portfolio.keySet());
+        ReplyKeyboardMarkup keyboard = createKeyboard(symbols, 3);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_REMOVE_CHOOSE_CRYPTO, null));
+        sendMessage(chatId, "Choose a cryptocurrency to remove from your portfolio:", keyboard);
+    }
+
+    private void handlePortfolioRemoveChoose(String chatId, User user, String text) {
+        String symbol = text.toUpperCase();
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (!portfolio.containsKey(symbol)) {
+            sendMessage(chatId, "This crypto is not in your portfolio.");
+            return;
+        }
+        double currentAmount = portfolio.get(symbol);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_REMOVE_AMOUNT, symbol));
+        sendMessage(chatId, "You have " + currentAmount + " " + symbol + ". How many coins to remove?");
+    }
+
+    private void handlePortfolioRemoveAmount(String chatId, User user, String text, String symbol) {
+        double amountToRemove;
+        try {
+            amountToRemove = Double.parseDouble(text);
+            if (amountToRemove <= 0) {
+                sendMessage(chatId, "Amount must be a positive number.");
+                pendingCommands.remove(chatId);
+                return;
+            }
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "Invalid input. Please enter a positive number.");
+            pendingCommands.remove(chatId);
+            return;
+        }
+        pendingCommands.remove(chatId);
+        Double priceUsd = cryptoInformationModule.getCurrentPrice(symbol, "USD").block();
+        if (priceUsd == null || priceUsd <= 0) {
+            sendMessage(chatId, "Could not fetch current price. Removal cancelled.");
+            return;
+        }
+        try {
+            portfolioManagementModule.removeAsset(user.getId(), symbol, amountToRemove, priceUsd);
+            sendMessage(chatId, "Removed " + amountToRemove + " " + symbol + " from portfolio.");
+            handlePortfolioView(chatId, user);
+        } catch (Exception e) {
+            sendMessage(chatId, "Error: " + e.getMessage());
+        }
+    }
+
+    // ===================== PORTFOLIO: View with prices =====================
+
+    private void handlePortfolioView(String chatId, User user) {
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (portfolio.isEmpty()) {
+            sendMessage(chatId, "Your portfolio is empty.");
+            return;
+        }
+        String fiat = getUserFiat(user);
+        List<String> lines = new ArrayList<>();
+        for (Map.Entry<String, Double> entry : portfolio.entrySet()) {
+            String symbol = entry.getKey();
+            double amount = entry.getValue();
+            Double price = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
+            if (price != null && price > 0) {
+                double cost = price * amount;
+                lines.add(String.format("%s: %.4f × %.2f %s = %.2f %s", symbol, amount, price, fiat, cost, fiat));
+            } else {
+                lines.add(symbol + ": " + amount + " coins, price unavailable");
+            }
+        }
+        sendMessage(chatId, "Your portfolio:\n" + String.join("\n", lines));
+    }
+
+    // ===================== PORTFOLIO: Total amount =====================
+
+    private void handlePortfolioAmount(String chatId, User user) {
+        Map<String, Double> port = portfolioManagementModule.getPortfolio(user.getId());
+        if (port.isEmpty()) {
+            sendMessage(chatId, "Your portfolio is empty.");
+            return;
+        }
+        String fiat = getUserFiat(user);
+        double total = 0;
+        for (Map.Entry<String, Double> e : port.entrySet()) {
+            Double price = cryptoInformationModule.getCurrentPrice(e.getKey(), fiat).block();
+            if (price != null) {
+                total += price * e.getValue();
+            }
+        }
+        sendMessage(chatId, "Total portfolio value: " + String.format("%.2f", total) + " " + fiat);
+    }
+
+    // ===================== PORTFOLIO: History over period =====================
+
+    private void handlePortfolioHistoryStart(String chatId, User user) {
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (portfolio.isEmpty()) {
+            sendMessage(chatId, "Your portfolio is empty.");
+            return;
+        }
+        List<String> periods = Arrays.asList("1 day", "1 month", "1 year");
+        ReplyKeyboardMarkup keyboard = createKeyboard(periods, 3);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_HISTORY_PERIOD, null));
+        sendMessage(chatId, "Choose a period for portfolio value change:", keyboard);
+    }
+
+    private void handlePortfolioHistoryPeriod(String chatId, User user, String text) {
+        int days;
+        switch (text) {
+            case "1 day": days = 1; break;
+            case "1 month": days = 30; break;
+            case "1 year": days = 365; break;
+            default:
+                sendMessage(chatId, "Please choose a period from the buttons.");
+                return;
+        }
+        pendingCommands.remove(chatId);
+        String fiat = getUserFiat(user);
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        Map<String, Double> firstPrices = portfolioManagementModule.getFirstPurchasePrices(user.getId());
+        Map<String, java.time.LocalDateTime> firstDates = portfolioManagementModule.getFirstPurchaseDates(user.getId());
+
+        double currentTotal = 0;
+        for (Map.Entry<String, Double> e : portfolio.entrySet()) {
+            Double price = cryptoInformationModule.getCurrentPrice(e.getKey(), fiat).block();
+            if (price != null) currentTotal += price * e.getValue();
+        }
+
+        double historicalTotal = 0;
+        Double fiatRate = fiatConversionService.getFiatRate("USD", fiat).block();
+        if (fiatRate == null) fiatRate = 1.0;
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        for (Map.Entry<String, Double> e : portfolio.entrySet()) {
+            String symbol = e.getKey();
+            double amount = e.getValue();
+            Double firstPriceUsd = firstPrices.get(symbol);
+            java.time.LocalDateTime firstDate = firstDates.get(symbol);
+
+            boolean useFirstPurchase = false;
+            if (firstDate != null) {
+                long daysSincePurchase = java.time.Duration.between(firstDate, now).toDays();
+                if (daysSincePurchase < days) {
+                    useFirstPurchase = true;
+                }
+            }
+
+            if (useFirstPurchase && firstPriceUsd != null) {
+                historicalTotal += firstPriceUsd * fiatRate * amount;
+            } else {
+                List<Double> klinePrices = bingXService.getHistory(symbol, "1d", days).block();
+                if (klinePrices != null && !klinePrices.isEmpty()) {
+                    historicalTotal += klinePrices.get(0) * fiatRate * amount;
+                } else if (firstPriceUsd != null) {
+                    historicalTotal += firstPriceUsd * fiatRate * amount;
+                }
+            }
+        }
+
+        double diff = currentTotal - historicalTotal;
+        double percent = historicalTotal != 0 ? (diff / historicalTotal) * 100 : 0;
+        String msg = String.format("Portfolio change for %s:\nCurrent value: %.2f %s\nValue %d days ago: %.2f %s\nDifference: %.2f %s (%.2f%%)",
+                text, currentTotal, fiat, days, historicalTotal, fiat, diff, fiat, percent);
+        sendMessage(chatId, msg);
+    }
+
+    // ===================== PORTFOLIO: Per-crypto history since first purchase =====================
+
+    private void handlePortfolioCryptoHistory(String chatId, User user) {
+        Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+        if (portfolio.isEmpty()) {
+            sendMessage(chatId, "Your portfolio is empty.");
+            return;
+        }
+        String fiat = getUserFiat(user);
+        Map<String, Double> firstPrices = portfolioManagementModule.getFirstPurchasePrices(user.getId());
+
+        List<String> lines = new ArrayList<>();
+        for (String symbol : portfolio.keySet()) {
+            Double firstPriceUsd = firstPrices.get(symbol);
+            if (firstPriceUsd == null) {
+                lines.add(symbol + ": no purchase history data");
+                continue;
+            }
+            Double currentPriceUsd = cryptoInformationModule.getCurrentPrice(symbol, "USD").block();
+            Double currentPriceFiat = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
+            if (currentPriceUsd == null || currentPriceUsd <= 0 || currentPriceFiat == null || currentPriceFiat <= 0) {
+                lines.add(symbol + ": price unavailable");
+                continue;
+            }
+            double diffUsd = currentPriceUsd - firstPriceUsd;
+            double percent = firstPriceUsd != 0 ? (diffUsd / firstPriceUsd) * 100 : 0;
+            lines.add(String.format("%s: bought at %.2f USD, now %.2f %s (%.2f USD), change %+.2f%%",
+                    symbol, firstPriceUsd, currentPriceFiat, fiat, currentPriceUsd, percent));
+        }
+        sendMessage(chatId, "Per-crypto change since first purchase:\n" + String.join("\n", lines));
+    }
+
+    // ===================== ALERTS COMMANDS =====================
+
+    private void handleAlertsCommand(String chatId, User user) {
+        if (alertsHandlingModule == null) {
+            sendMessage(chatId, "Alerts module is not available.");
+            return;
+        }
+        List<String> alerts = alertsHandlingModule.getRecentAlerts(user.getId());
+        if (alerts.isEmpty()) {
+            sendMessage(chatId, "No alerts in the last 7 days.");
+        } else {
+            sendMessage(chatId, "Recent alerts (last 7 days):\n" + String.join("\n", alerts));
+        }
+    }
+
+    private void handleAlertsList(String chatId, User user) {
+        List<CryptoInformationModule.UserAlertInfo> alerts = cryptoInformationModule.getUserAlerts(user.getId());
+        if (alerts.isEmpty()) {
+            sendMessage(chatId, "You have no active custom alerts.");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder("Your active custom alerts:\n");
+        for (CryptoInformationModule.UserAlertInfo alert : alerts) {
+            sb.append(String.format(java.util.Locale.US, "ID: %d | %s | %s | Target: %.4f %s\n", 
+                alert.getId(), alert.getSymbol(), alert.getType(), alert.getTargetValue(), alert.getType().equals("PERCENT") ? "%" : alert.getFiatSymbol()));
+        }
+        sendMessage(chatId, sb.toString());
+    }
+
+    private void handleDeleteAlertStart(String chatId, User user) {
+        List<CryptoInformationModule.UserAlertInfo> alerts = cryptoInformationModule.getUserAlerts(user.getId());
+        if (alerts.isEmpty()) {
+            sendMessage(chatId, "You have no active custom alerts to delete.");
+            return;
+        }
+        List<String> buttons = alerts.stream().map(a -> String.valueOf(a.getId())).collect(Collectors.toList());
+        ReplyKeyboardMarkup keyboard = createKeyboard(buttons, 4);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.DELETE_ALERT_CHOOSE, null));
+        sendMessage(chatId, "Choose the ID of the alert to delete:", keyboard);
+    }
+
+    private void handleDeleteAlertChoose(String chatId, User user, String text) {
+        try {
+            Integer alertId = Integer.parseInt(text);
+            if (cryptoInformationModule.removeUserAlert(user.getId(), alertId)) {
+                sendMainMenu(chatId, "Alert ID " + alertId + " deleted successfully.");
+            } else {
+                sendMessage(chatId, "Alert not found or could not be deleted.");
+            }
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "Invalid ID. Please enter a numeric ID.");
+        }
+        pendingCommands.remove(chatId);
+    }
+
+    private void handleSetAlertStart(String chatId, User user) {
+        ReplyKeyboardMarkup keyboard = createKeyboard(CRYPTO_SYMBOLS, 3);
+        pendingCommands.put(chatId, new PendingCommand(PendingAction.SET_ALERT_CHOOSE, null));
+        sendMessage(chatId, "Choose a crypto to create an alert for:", keyboard);
+    }
+
+    private void handleSetAlertChoose(String chatId, User user, String text) {
+        String normalized = text.toUpperCase();
+        if (!isAllowedCrypto(normalized)) {
+            sendMessage(chatId, "Please choose a valid crypto from the list.");
+            return;
+        }
+        
+        List<String> options = Arrays.asList("PRICE", "PERCENT");
+        ReplyKeyboardMarkup keyboard = createKeyboard(options, 2);
+        
+        PendingCommand next = new PendingCommand(PendingAction.SET_ALERT_TYPE, normalized);
+        pendingCommands.put(chatId, next);
+        
+        sendMessage(chatId, "Choose alert type:\nPRICE - trigger when price crosses target.\nPERCENT - trigger when price changes by % from current.", keyboard);
+    }
+
+    private void handleSetAlertType(String chatId, User user, String text, String symbol) {
+        String type = text.toUpperCase();
+        if (!type.equals("PRICE") && !type.equals("PERCENT")) {
+            sendMessage(chatId, "Please choose PRICE or PERCENT.");
+            return;
+        }
+        
+        PendingCommand next = new PendingCommand(PendingAction.SET_ALERT_VALUE, symbol);
+        next.alertType = type;
+        pendingCommands.put(chatId, next);
+        
+        String fiat = getUserFiat(user);
+        Double curPrice = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
+        String priceInfo = (curPrice != null && curPrice > 0)
+                ? "Current price: " + String.format("%.2f", curPrice) + " " + fiat + "\n"
+                : "";
+
+        if (type.equals("PRICE")) {
+            sendMessage(chatId, priceInfo + "Enter the target price for " + symbol + " in " + fiat + ":");
+        } else {
+            sendMessage(chatId, priceInfo + "Enter the percentage change (e.g. 5.5) for " + symbol + ":");
+        }
+    }
+
+    private void handleSetAlertValue(String chatId, User user, String text, String symbol, String type) {
+        try {
+            double targetValue = Double.parseDouble(text);
+            if (targetValue <= 0) {
+                sendMessage(chatId, "Value must be positive.");
+                return;
+            }
+            String fiat = getUserFiat(user);
+            cryptoInformationModule.addUserAlert(user.getId(), symbol, type, targetValue, fiat);
+            
+            sendMainMenu(chatId, "Successfully created " + type + " alert for " + symbol + " with target " + targetValue + (type.equals("PERCENT") ? "%" : " " + fiat) + ".");
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "Invalid number format. Please enter a valid number.");
+        }
+        pendingCommands.remove(chatId);
     }
 
     private void sendCurrentFiat(String chatId, User user) {
@@ -656,32 +1053,53 @@ sendMessage(chatId, "Total portfolio value: " + total + " " + fiat);
     }
 
     @Override
-    public void afterPropertiesSet() throws Exception {
-        TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
-        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    public void afterPropertiesSet() {
+        new Thread(() -> {
             try {
-                botsApi.registerBot(this);
-                log.info("Telegram bot registered successfully on attempt {}", attempt);
-                return;
-            } catch (TelegramApiException e) {
-                log.warn("Failed to register Telegram bot (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage());
-                if (attempt == MAX_RETRIES) {
-                    throw e;
+                TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
+                for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                    try {
+                        botsApi.registerBot(this);
+                        log.info("Telegram bot registered successfully on attempt {}", attempt);
+                        return;
+                    } catch (TelegramApiException e) {
+                        log.warn("Failed to register Telegram bot (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage());
+                        if (attempt == MAX_RETRIES) {
+                            log.error("Final attempt to register bot failed", e);
+                        }
+                        try {
+                            Thread.sleep(RETRY_DELAY_MS);
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
                 }
-                Thread.sleep(RETRY_DELAY_MS);
+            } catch (TelegramApiException e) {
+                log.error("Critical error during Telegram API initialization", e);
             }
-        }
+        }).start();
     }
 
     private enum PendingAction {
         ADD_TRACKED_CHOOSE,
         ADD_TRACKED_PRICE,
-        REMOVE_TRACKED
+        REMOVE_TRACKED,
+        PORTFOLIO_ADD_CHOOSE_CRYPTO,
+        PORTFOLIO_ADD_AMOUNT,
+        PORTFOLIO_REMOVE_CHOOSE_CRYPTO,
+        PORTFOLIO_REMOVE_AMOUNT,
+        PORTFOLIO_HISTORY_PERIOD,
+        SET_ALERT_CHOOSE,
+        SET_ALERT_TYPE,
+        SET_ALERT_VALUE,
+        DELETE_ALERT_CHOOSE
     }
 
     private static class PendingCommand {
         private final PendingAction action;
         private final String symbol;
+        public String alertType;
 
         public PendingCommand(PendingAction action, String symbol) {
             this.action = action;

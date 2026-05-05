@@ -53,4 +53,10 @@ public class AppConfig {
     public WebClient webClient() {
         return WebClient.builder().build();
     }
+
+    @Bean
+    public com.fasterxml.jackson.databind.ObjectMapper objectMapper() {
+        return new com.fasterxml.jackson.databind.ObjectMapper()
+                .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+    }
 }
