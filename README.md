@@ -199,6 +199,9 @@ $env:API_TOKEN          = "токен_админа"
    - **Метод**: `GET http://localhost:8080/admin/users`
    - **Авторизация**: Требуется HTTP-заголовок `Authorization: Bearer <API_TOKEN>`
    - **Описание**: Возвращает массив зарегистрированных пользователей. Запросы без валидного ключа отклоняются.
+  
+   - <img width="881" height="65" alt="image" src="https://github.com/user-attachments/assets/97559586-f1e2-40e7-a10f-80401611bcce" />
+
 
 ---
 
