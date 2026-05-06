@@ -194,6 +194,8 @@ $env:API_TOKEN          = "токен_админа"
    - **Авторизация**: Не требуется.
    - **Описание**: Возвращает статус приложения.
 
+![alt text](readme/image-21.png)
+
 2. **Получение списка пользователей (Admin Only)**
    - **Метод**: `GET http://localhost:8080/admin/users`
    - **Авторизация**: Требуется HTTP-заголовок `Authorization: Bearer <API_TOKEN>`
