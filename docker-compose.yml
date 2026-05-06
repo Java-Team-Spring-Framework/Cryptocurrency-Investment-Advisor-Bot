@@ -1,14 +1,13 @@
-version: '3.9'
-
 services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile 
+      dockerfile: Dockerfile
     env_file:
       - .env
     environment:
-      - SERVER_PORT=${SERVER_PORT:-8080}
+      - SERVER_PORT=${SERVER_PORT:-18080}
+      - API_TOKEN=${API_TOKEN}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-crypto_bot_db}
@@ -22,7 +21,7 @@ services:
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
       - OPENROUTE_API_KEY=${OPENROUTE_API_KEY}
     ports:
-      - '8080:8080'
+      - '${SERVER_PORT:-18080}:${SERVER_PORT:-18080}'
     depends_on:
       postgres:
         condition: service_healthy
