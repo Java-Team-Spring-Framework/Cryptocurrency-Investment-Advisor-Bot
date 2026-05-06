@@ -106,7 +106,14 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 User newUser = authUserModule.registerUser(chatId, username);
                 cryptoInformationModule.ensureDefaultTrackedCurrency(newUser.getId());
                 rabbitMQService.logActivity(chatId, "User registered: " + (username != null ? username : "unknown"));
-                sendMessage(chatId, "Welcome " + (username != null ? username : "") + "! Registration complete.");
+                sendMessage(chatId, "🚀 Welcome to CryptoBot!\n" +
+                        "🤖 I am your personal assistant in the world of cryptocurrencies. I help you track the crypto market, analyze assets, and make investment decisions.\n" +
+                        "💡 With my help, you can:\n" +
+                        "🔹 Get current prices for BTC, ETH, SOL, XRP, ADA, DOGE, AVAX, NEAR, LTC in various currencies.\n" +
+                        "🔹 Track cryptocurrency prices and receive notifications about changes.\n" +
+                        "🔹 Compare exchange rates of different assets.\n" +
+                        "🔹 Manage your portfolio: add and remove cryptocurrencies, as well as track changes in the value of your portfolio and assets.\n" +
+                        "📌 To see the list of available features, use the /help command.");
             } else {
                 sendMessage(chatId, "Please /start first.");
             }
@@ -201,7 +208,14 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
 
         switch (command) {
             case "/start":
-                sendMainMenu(chatId, "Welcome back, " + (username != null ? username : "") + "!");
+                sendMessage(chatId, "🚀 Welcome to CryptoBot!\n" +
+                        "🤖 I am your personal assistant in the world of cryptocurrencies. I help you track the crypto market, analyze assets, and make investment decisions.\n" +
+                        "💡 With my help, you can:\n" +
+                        "🔹 Get current prices for BTC, ETH, SOL, XRP, ADA, DOGE, AVAX, NEAR, LTC in various currencies.\n" +
+                        "🔹 Track cryptocurrency prices and receive notifications about changes.\n" +
+                        "🔹 Compare exchange rates of different assets.\n" +
+                        "🔹 Manage your portfolio: add and remove cryptocurrencies, as well as track changes in the value of your portfolio and assets.\n" +
+                        "📌 To see the list of available features, use the /help command.");
                 break;
             case "/menu":
                 sendMainMenu(chatId, "Menu:");
@@ -241,10 +255,11 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                     .block();
 
                     if (price == null || price <= 0) {
-                        sendMessage(chatId, "Could not fetch price for " + parts[1]);
+                        sendMessage(chatId, "Could not fetch price for " + parts[1] + ".");
                     } else {
                         sendMessage(chatId,
-                            "Current price of " + parts[1].toUpperCase() + ": "
+                            "📊 View current price:\n" +
+                            "🎯 " + parts[1].toUpperCase() + ": "
                             + String.format("%.2f", price) + " " + fiat);
                     }
                 } else {
@@ -336,8 +351,10 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                         sendMessage(chatId, "Could not fetch prices for " + s1 + " and/or " + s2 + ". Supported: " + supported);
                     } else {
                         sendMessage(chatId,
+                                "📈 " + s1 + " vs " + s2 + "\n\n" +
                                 s1 + ": " + String.format("%.2f", p1) + " " + fiat + "\n" +
-                                s2 + ": " + String.format("%.2f", p2) + " " + fiat + "\nRatio: " + String.format("%.2f", p1 / p2));
+                                s2 + ": " + String.format("%.2f", p2) + " " + fiat + "\n" +
+                                "Ratio = " + String.format("%.2f", p1 / p2));
                     }
                 } else if (parts.length == 2) {
                     String s1 = parts[1].toUpperCase();
@@ -379,29 +396,34 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 }
                 break;
             case "/help":
-                sendMessage(chatId, "Available commands:\n" +
-                        "/start - Register\n" +
-                        "/set_fiat - Choose fiat currency\n" +
-                        "/current_fiat - Show current fiat\n" +
-                        "/add_tracked_crypto - Add tracked crypto\n" +
-                        "/remove_tracked_crypto - Remove tracked crypto\n" +
-                        "/tracked - View tracked cryptos\n" +
-                        "/price_crypto - Get current price\n" +
-                        "/portfolio_add - Add asset to portfolio\n" +
-                        "/portfolio_remove - Remove asset from portfolio\n" +
-                        "/portfolio - View portfolio with prices\n" +
-                        "/portfolio_amount - View total portfolio value\n" +
-                        "/portfolio_history - Portfolio value change over period\n" +
-                        "/portfolio_crypto_history - Per-crypto change since purchase\n" +
-                        "/set_alert - Create a custom alert (Price or Percent)\n" +
-                        "/alerts_list - View your active custom alerts\n" +
-                        "/delete_alert - Delete a custom alert\n" +
-                        "/alerts - View recent alert history (last 7 days)\n" +
-                        "/compare - Compare two cryptos\n" +
-                        "/price_history - View price history\n" +
-                        "/llm_analyze <symbol> - LLM investment analysis\n" +
-                        "/llm_portfolio - LLM portfolio review\n" +
-                        "/llm_ask <question> - Ask the LLM about crypto");
+                sendMessage(chatId, "🤖 CryptoBot – Help\n" +
+                "📌 General\n\n" +
+                        "• /start — start the bot and see main recommendations\n" +
+                        "• /set_fiat — choose your base fiat currency\n" +
+                        "• /current_fiat — show the current fiat currency\n\n" +
+                        "📊 Tracked Cryptocurrencies\n"+
+                        "• /add_tracked_crypto — add a crypto to your watchlist\n" +
+                        "• /remove_tracked_crypto — remove a crypto from your watchlist\n" +
+                        "• /tracked — list tracked cryptocurrencies\n" +
+                        "• /price_crypto — view current crypto price\n\n" +
+                        "💼 Portfolio Management\n"+
+                        "• /portfolio_add — add coins to your portfolio\n" +
+                        "• /portfolio_remove — remove coins from your portfolio\n" +
+                        "• /portfolio — view portfolio value with current prices\n" +
+                        "• /portfolio_amount — show total portfolio value\n" +
+                        "• /portfolio_history — view portfolio value change over a period\n" +
+                        "• /portfolio_crypto_history — show per-crypto change since purchase\n\n" +
+                        "🔔 Alerts\n"+
+                        "• /set_alert — create a custom price alert\n" +
+                        "• /alerts_list — list your active alerts\n" +
+                        "• /delete_alert — delete an alert\n\n" +
+                        "🔄 Comparison and History\n"+
+                        "• /compare — compare two cryptocurrencies\n" +
+                        "• /price_history — view crypto price history\n\new" +
+                        "🧠 AI Analysis (LLM)\n"+
+                        "• /llm_analyze <symbol> — get investment analysis\n" +
+                        "• /llm_portfolio — review your portfolio with AI\n" +
+                        "• /llm_ask <question> — ask the AI about crypto");
                 break;
             default:
                 if (isAllowedFiat(text)) {
@@ -421,12 +443,14 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
 
         String currentFiat = getUserFiat(user);
         if (normalized.equals(currentFiat)) {
-            sendMainMenu(chatId, "Your fiat currency is already set to " + normalized + ".");
+            sendMessage(chatId, "ℹ️ Your fiat currency is already set to " + normalized + ".\n\n" +
+                    "You will continue to receive prices in the same currency.");
             return;
         }
 
         if (userRepository.updateFiat(user.getId(), normalized)) {
-            sendMainMenu(chatId, "Fiat currency set to " + normalized + ".");
+            sendMessage(chatId, "✅ Fiat currency updated\n\n" +
+                    "💵 Your fiat currency has been set to " + normalized + ".");
         } else {
             sendMainMenu(chatId, "Failed to set fiat currency. Please try again.");
         }
@@ -434,7 +458,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
 
     private void sendFiatSelection(String chatId) {
         ReplyKeyboardMarkup keyboard = createKeyboard(FIAT_SYMBOLS, 3);
-        sendMessage(chatId, "Choose your fiat currency:", keyboard);
+        sendMessage(chatId, "Please select your *fiat currency* from the buttons below.\n\n" +
+                "📊 It will be used to display prices and for portfolio calculations.", keyboard);
     }
 
     private void handleAddTrackedTyped(String chatId, User user, String symbol, String targetPriceText) {
@@ -450,9 +475,18 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 return;
             }
             if (!cryptoInformationModule.addTrackedCurrency(user.getId(), normalized, targetPrice, getUserFiat(user))) {
-                sendMessage(chatId, "Currency " + normalized + " is already tracked or unsupported.");
+                sendMessage(chatId, "❌ Addition Error\n\n" +
+                        "The currency " + normalized + " is already in your tracked list.\n\n" +
+                        "👉Please choose a different currency for addition .\n\n" +
+                        "📋 You can view your current tracked list using the /tracked command.");
             } else {
-                sendMessage(chatId, "Added " + normalized + " to watchlist with target price " + targetPriceText + " " + getUserFiat(user) + ".");
+                sendMessage(chatId, "✅ *Successfully added!*\n\n" +
+                        normalized + " has been added to your watchlist.\n\n" +
+                        "🔔 You will receive notifications every 24 hours if the price changes by 5%.\n\n" +
+                        "📋 You can view your current tracked list using the /tracked command.");
+                if (targetPrice > 0) {
+                    sendMessage(chatId, "Custom price alert for " + normalized + " created with target " + String.format("%.2f", targetPrice) + " " + getUserFiat(user) + ".");
+                }
             }
         } catch (NumberFormatException e) {
             sendMessage(chatId, "Please enter a valid numeric price. Usage: /add_tracked_crypto <symbol> <target_price>");
@@ -462,18 +496,25 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private void sendAddTrackedSelection(String chatId) {
         ReplyKeyboardMarkup keyboard = createKeyboard(CRYPTO_SYMBOLS, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.ADD_TRACKED_CHOOSE, null));
-        sendMessage(chatId, "Choose a crypto to add from the list:", keyboard);
+        sendMessage(chatId, "📌 Add a cryptocurrency to your watchlist:\n\n" +
+        "🎯 *Select a cryptocurrency* from the buttons below to add it to your tracked list.\n" +
+        "🔔 Once added, I will notify you about price changes of the selected asset.\n" +
+        "📊 *Price change alert:* 5% or more within 24 hours.\n" +
+        "👉 Please choose a cryptocurrency from the buttons below.", keyboard);
     }
 
     private void handlePendingAddTrackedChoose(String chatId, User user, String text) {
         String normalized = text.toUpperCase();
         if (!isAllowedCrypto(normalized)) {
-            sendMessage(chatId, "Please choose a crypto from the list: " + String.join(", ", CRYPTO_SYMBOLS));
+            sendMessage(chatId, "Please choose a valid cryptocurrency from the list: " + String.join(", ", CRYPTO_SYMBOLS));
             return;
         }
         List<String> tracked = cryptoInformationModule.getTrackedCurrencies(user.getId());
         if (tracked.contains(normalized)) {
-            sendMessage(chatId, "Currency " + normalized + " is already tracked.");
+            sendMessage(chatId, "❌ Addition Error\n\n" +
+                    "The currency " + normalized + " is already in your tracked list.\n\n" +
+                    "👉Please choose a different currency for addition .\n\n" +
+                    "📋 You can view your current tracked list using the /tracked command.");
             pendingCommands.remove(chatId);
             return;
         }
@@ -481,9 +522,11 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         String fiatTrk = getUserFiat(user);
         Double curPrice = cryptoInformationModule.getCurrentPrice(normalized, fiatTrk).block();
         String priceInfo = (curPrice != null && curPrice > 0)
-                ? "Current price of " + normalized + ": " + String.format("%.2f", curPrice) + " " + fiatTrk + "\n"
+                ? "📊 Current price of " + normalized + ": " + String.format("%.2f", curPrice) + " " + fiatTrk + "\n\n"
                 : "";
-        sendMessage(chatId, priceInfo + "Enter the target price for " + normalized + " in " + fiatTrk + " (enter 0 to skip custom price alert):");
+        sendMessage(chatId, priceInfo + "🎯 Set a custom price alert\n" +
+                "Please enter your target price for " + normalized + " in " + fiatTrk + ".\n\n" +
+                "👉 Type 0 if you do not wish to skip custom price alert");
     }
 
     private void handlePendingAddTrackedPrice(String chatId, User user, String text, String symbol) {
@@ -494,16 +537,22 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 return;
             }
             if (cryptoInformationModule.addTrackedCurrency(user.getId(), symbol, targetPrice, getUserFiat(user))) {
-                sendMainMenu(chatId, "Added " + symbol + " to watchlist. Every 24h you will receive notifications for 5% changes.");
+                sendMessage(chatId, "✅ *Successfully added!*\n\n" +
+                        symbol + " has been added to your watchlist.\n\n" +
+                        "🔔 You will receive notifications every 24 hours if the price changes by 5%.\n\n" +
+                        "📋 You can view your current tracked list using the /tracked command.");
                 if (targetPrice > 0) {
-                    sendMessage(chatId, "Custom price alert for " + symbol + " created with target " + targetPrice + " " + getUserFiat(user) + ".");
+                    sendMessage(chatId, "Custom price alert for " + symbol + " created with target " + String.format("%.2f", targetPrice) + " " + getUserFiat(user) + ".");
                 }
             } else {
-                sendMessage(chatId, "Could not add " + symbol + ".");
+                sendMessage(chatId, "❌ Addition Error\n\n" +
+                        "The currency " + symbol + " is already in your tracked list.\n\n" +
+                        "👉Please choose a different currency for addition .\n\n" +
+                        "📋 You can view your current tracked list using the /tracked command.");
             }
             pendingCommands.remove(chatId);
         } catch (NumberFormatException e) {
-            sendMessage(chatId, "Please enter a valid price for " + symbol + ".");
+            sendMessage(chatId, "Please enter a valid numeric price. Usage: /add_tracked_crypto <symbol> <target_price>");
         }
     }
 
@@ -511,11 +560,16 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         String normalized = symbol.toUpperCase();
         List<String> tracked = cryptoInformationModule.getTrackedCurrencies(user.getId());
         if (!tracked.contains(normalized)) {
-            sendMessage(chatId, "Currency " + normalized + " is not currently tracked.");
+            sendMessage(chatId, "❌ Removal Error\n\n" +
+                    "The currency " + normalized + " is not currently tracked.\n\n" +
+                    "👉 Please choose a different currency or view your list with /tracked.");
             return;
         }
         if (cryptoInformationModule.removeTrackedCurrency(user.getId(), normalized)) {
-            sendMessage(chatId, "Currency " + normalized + " removed. To delete alerts for this currency, use /delete_alert.");
+            sendMessage(chatId, "✅ Currency removed\n\n" +
+                    normalized + " has been successfully removed from your tracked list.\n\n" +
+                    "🔔 To also delete price alerts for this currency, use:\n/delete_alert\n\n" +
+                    "📋 You can view your current tracked list using the /tracked command.");
             ensureDefaultTrackedAfterRemoval(user, chatId);
         } else {
             sendMessage(chatId, "Failed to remove " + normalized + ".");
@@ -531,18 +585,23 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
 
         ReplyKeyboardMarkup keyboard = createKeyboard(tracked, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.REMOVE_TRACKED, null));
-        sendMessage(chatId, "Choose a tracked crypto to remove:", keyboard);
+        sendMessage(chatId, "🗑️ Remove a cryptocurrency from your watchlist:\n\n" +
+                "👉 Please select the cryptocurrency you want to remove from the buttons below.", keyboard);
     }
 
     private void handlePendingRemoveTracked(String chatId, User user, String text) {
         String normalized = text.toUpperCase();
         List<String> tracked = cryptoInformationModule.getTrackedCurrencies(user.getId());
         if (!tracked.contains(normalized)) {
-            sendMessage(chatId, "Please choose a tracked crypto from the list.");
+            sendMessage(chatId, "❌ Removal Error\n\n" +
+                    "Please choose a cryptocurrency from the buttons below.");
             return;
         }
         if (cryptoInformationModule.removeTrackedCurrency(user.getId(), normalized)) {
-            sendMessage(chatId, "Currency " + normalized + " removed. To delete alerts for this currency, use /delete_alert.");
+            sendMessage(chatId, "✅ Currency removed\n\n" +
+                    normalized + " has been successfully removed from your tracked list.\n\n" +
+                    "🔔 To also delete price alerts for this currency, use:\n/delete_alert\n\n" +
+                    "📋 You can view your current tracked list using the /tracked command.");
             ensureDefaultTrackedAfterRemoval(user, chatId);
         } else {
             sendMessage(chatId, "Failed to remove " + normalized + ".");
@@ -554,7 +613,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         List<String> trackedAfter = cryptoInformationModule.getTrackedCurrencies(user.getId());
         if (trackedAfter.isEmpty()) {
             cryptoInformationModule.ensureDefaultTrackedCurrency(user.getId());
-            sendMainMenu(chatId, "No tracked cryptocurrencies left. Default BTC has been added to your watchlist.");
+            sendMessage(chatId, "⚠️ No tracked cryptocurrencies left.\n" +
+                    "🔄 Default BTC has been automatically added back to your tracked list.");
         } else {
             sendMainMenu(chatId, "Tracked crypto removed. Current tracked: " + String.join(", ", trackedAfter));
         }
@@ -572,13 +632,13 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         for (String symbol : tracked) {
             Double price = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
             if (price != null && price > 0) {
-                lines.add(symbol + ": " + String.format("%.2f", price) + " " + fiat);
+                lines.add("🎯 " + symbol + ": " + String.format("%.2f", price) + " " + fiat);
             } else {
-                lines.add(symbol + ": price unavailable");
+                lines.add("🎯 " + symbol + ": price unavailable");
             }
         }
 
-        sendMessage(chatId, "Tracked cryptocurrencies:\n" + String.join("\n", lines));
+        sendMessage(chatId, "📋 Your tracked cryptocurrencies:\n\n" + String.join("\n", lines));
     }
 
     // ===================== PORTFOLIO: Interactive Add =====================
@@ -586,17 +646,20 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private void sendPortfolioAddChooseCrypto(String chatId) {
         ReplyKeyboardMarkup keyboard = createKeyboard(CRYPTO_SYMBOLS, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_ADD_CHOOSE_CRYPTO, null));
-        sendMessage(chatId, "Choose a cryptocurrency to add to your portfolio:", keyboard);
+        sendMessage(chatId, "📊 Add to portfolio\n\n" +
+                "👉 Please choose a cryptocurrency from the buttons below to add it to your portfolio.", keyboard);
     }
 
     private void handlePortfolioAddChoose(String chatId, User user, String text) {
         String symbol = text.toUpperCase();
         if (!isAllowedCrypto(symbol)) {
-            sendMessage(chatId, "Please choose from the list: " + String.join(", ", CRYPTO_SYMBOLS));
+            sendMessage(chatId, "Please choose a valid cryptocurrency from the list: " + String.join(", ", CRYPTO_SYMBOLS));
             return;
         }
         pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_ADD_AMOUNT, symbol));
-        sendMessage(chatId, "Enter the number of " + symbol + " coins to add:");
+        sendMessage(chatId, "👉 Please enter the number of " + symbol + " coins you would like to add:\n" +
+                "ℹ️ Positive number only (e.g., 1, 25.5, 100)\n\n" +
+                "ℹ️ The number must be greater than zero.");
     }
 
     private void handlePortfolioAddAmount(String chatId, User user, String text, String symbol) {
@@ -621,7 +684,9 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         }
         try {
             portfolioManagementModule.addAsset(user.getId(), symbol, amount, priceUsd);
-            sendMessage(chatId, "Added " + amount + " " + symbol + " at $" + String.format("%.2f", priceUsd) + " per coin.");
+            sendMessage(chatId, "✅ Added successfully!\n\n" +
+                    "+ " + amount + " " + symbol + " at $" + String.format("%.2f", priceUsd) + " per coin\n\n" +
+                    "📊 Your current portfolio:");
             handlePortfolioView(chatId, user);
         } catch (Exception e) {
             sendMessage(chatId, "Error adding asset: " + e.getMessage());
@@ -639,19 +704,23 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         List<String> symbols = new ArrayList<>(portfolio.keySet());
         ReplyKeyboardMarkup keyboard = createKeyboard(symbols, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_REMOVE_CHOOSE_CRYPTO, null));
-        sendMessage(chatId, "Choose a cryptocurrency to remove from your portfolio:", keyboard);
+        sendMessage(chatId, "🗑️ Remove from portfolio\n\n" +
+                "👉 Please choose a cryptocurrency from the buttons below to remove it from your portfolio.", keyboard);
     }
 
     private void handlePortfolioRemoveChoose(String chatId, User user, String text) {
         String symbol = text.toUpperCase();
         Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
         if (!portfolio.containsKey(symbol)) {
-            sendMessage(chatId, "This crypto is not in your portfolio.");
+            sendMessage(chatId, "👉 Please choose a cryptocurrency from the buttons below.");
             return;
         }
         double currentAmount = portfolio.get(symbol);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_REMOVE_AMOUNT, symbol));
-        sendMessage(chatId, "You have " + currentAmount + " " + symbol + ". How many coins to remove?");
+        sendMessage(chatId, "You currently own: " + currentAmount + " " + symbol + "\n" +
+                "✏️ Please enter the number of coins you wish to remove:\n\n" +
+                "ℹ️ Positive number only (e.g., 1, 1.5, 3)\n\n" +
+                "ℹ️ Cannot exceed your current balance this cryptocurrency .");
     }
 
     private void handlePortfolioRemoveAmount(String chatId, User user, String text, String symbol) {
@@ -676,7 +745,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         }
         try {
             portfolioManagementModule.removeAsset(user.getId(), symbol, amountToRemove, priceUsd);
-            sendMessage(chatId, "Removed " + amountToRemove + " " + symbol + " from portfolio.");
+            sendMessage(chatId, "✅ Removed " + amountToRemove + " " + symbol + "\nfrom your portfolio\n\n" +
+                    "📊 Updated portfolio");
             handlePortfolioView(chatId, user);
         } catch (Exception e) {
             sendMessage(chatId, "Error: " + e.getMessage());
@@ -699,12 +769,12 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             Double price = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
             if (price != null && price > 0) {
                 double cost = price * amount;
-                lines.add(String.format("%s: %.4f × %.2f %s = %.2f %s", symbol, amount, price, fiat, cost, fiat));
+                lines.add(String.format("🎯 %s: %.4f × %.2f %s = %.2f %s", symbol, amount, price, fiat, cost, fiat));
             } else {
-                lines.add(symbol + ": " + amount + " coins, price unavailable");
+                lines.add("🎯 " + symbol + ": " + amount + " coins, price unavailable");
             }
         }
-        sendMessage(chatId, "Your portfolio:\n" + String.join("\n", lines));
+        sendMessage(chatId, "📊 Your current portfolio:\n\n" + String.join("\n", lines));
     }
 
     // ===================== PORTFOLIO: Total amount =====================
@@ -723,7 +793,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 total += price * e.getValue();
             }
         }
-        sendMessage(chatId, "Total portfolio value: " + String.format("%.2f", total) + " " + fiat);
+        sendMessage(chatId, "💰 Total portfolio value: " + String.format("%.2f", total) + " " + fiat);
     }
 
     // ===================== PORTFOLIO: History over period =====================
@@ -737,15 +807,20 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         List<String> periods = Arrays.asList("1 day", "1 month", "1 year");
         ReplyKeyboardMarkup keyboard = createKeyboard(periods, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.PORTFOLIO_HISTORY_PERIOD, null));
-        sendMessage(chatId, "Choose a period for portfolio value change:", keyboard);
+        sendMessage(chatId, "📈 Portfolio value change\n\n" +
+                "👉 Please choose a time period using the buttons below:\n\n" +
+                "📅 1 day\n" +
+                "📅 1 month\n" +
+                "🗓️ 1 year", keyboard);
     }
 
     private void handlePortfolioHistoryPeriod(String chatId, User user, String text) {
         int days;
+        String periodLabel;
         switch (text) {
-            case "1 day": days = 1; break;
-            case "1 month": days = 30; break;
-            case "1 year": days = 365; break;
+            case "1 day": days = 1; periodLabel = "1 day"; break;
+            case "1 month": days = 30; periodLabel = "1 month"; break;
+            case "1 year": days = 365; periodLabel = "1 year"; break;
             default:
                 sendMessage(chatId, "Please choose a period from the buttons.");
                 return;
@@ -796,27 +871,38 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
 
         double diff = currentTotal - historicalTotal;
         double percent = historicalTotal != 0 ? (diff / historicalTotal) * 100 : 0;
-        String msg = String.format("Portfolio change for %s:\nCurrent value: %.2f %s\nValue %d days ago: %.2f %s\nDifference: %.2f %s (%.2f%%)",
-                text, currentTotal, fiat, days, historicalTotal, fiat, diff, fiat, percent);
-        sendMessage(chatId, msg);
+        String comparisonLabel = switch (days) {
+            case 1 -> "1 day ago";
+            case 30 -> "30 day ago";
+            default -> "365 day ago";
+        };
+        sendMessage(chatId, "📈 Portfolio change (" + periodLabel + ")\n\n" +
+                "Current: " + String.format("%.2f", currentTotal) + " " + fiat + "\n" +
+                comparisonLabel + ": " + String.format("%.2f", historicalTotal) + " " + fiat + "\n\n" +
+                "🟢 Difference: " + String.format("%.2f", diff) + " " + fiat + " (" + String.format("%.2f", percent) + "%)");
     }
 
     private void sendPriceHistoryChooseCrypto(String chatId, User user) {
         ReplyKeyboardMarkup keyboard = createKeyboard(CRYPTO_SYMBOLS, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.PRICE_HISTORY_CHOOSE_CRYPTO, null));
-        sendMessage(chatId, "Choose a crypto for price history:", keyboard);
+        sendMessage(chatId, "📊 Price history\n\n" +
+                "👉 Please choose a cryptocurrency from the buttons below.", keyboard);
     }
 
     private void handlePriceHistoryChooseCrypto(String chatId, User user, String text) {
         String symbol = text.toUpperCase();
         if (!isAllowedCrypto(symbol)) {
-            sendMessage(chatId, "Please choose a crypto from the list: " + String.join(", ", CRYPTO_SYMBOLS));
+            sendMessage(chatId, "Please choose a valid crypto from the list: " + String.join(", ", CRYPTO_SYMBOLS));
             return;
         }
         List<String> periods = Arrays.asList("1 day", "7 days", "30 days");
         ReplyKeyboardMarkup keyboard = createKeyboard(periods, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.PRICE_HISTORY_PERIOD, symbol));
-        sendMessage(chatId, "Choose a period for " + symbol + ":", keyboard);
+        sendMessage(chatId, "📊 Price history\n\n" +
+                "👉 Please choose the period using the buttons:\n\n" +
+                "📅 1 day\n" +
+                "📅 7 days\n" +
+                "📅 30 days", keyboard);
     }
 
     private void handlePriceHistoryPeriod(String chatId, User user, String text, String symbol) {
@@ -892,7 +978,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private void sendPriceCryptoChooseCrypto(String chatId, User user) {
         ReplyKeyboardMarkup keyboard = createKeyboard(CRYPTO_SYMBOLS, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.PRICE_CRYPTO_CHOOSE, null));
-        sendMessage(chatId, "Choose a cryptocurrency to view current price:", keyboard);
+        sendMessage(chatId, "📊 View current price\n\n" +
+                "👉Please choose a cryptocurrency from the buttons below to see its latest price.", keyboard);
     }
 
     private void handlePriceCryptoChoose(String chatId, User user, String text) {
@@ -907,14 +994,16 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         if (price == null || price <= 0) {
             sendMessage(chatId, "Could not fetch price for " + symbol + ".");
         } else {
-            sendMessage(chatId, "Current price of " + symbol + ": " + String.format("%.2f", price) + " " + fiat);
+            sendMessage(chatId, "📊 View current price:\n" +
+                    "🎯 " + symbol + ": " + String.format("%.2f", price) + " " + fiat);
         }
     }
 
     private void sendCompareChooseFirstCrypto(String chatId, User user) {
         ReplyKeyboardMarkup keyboard = createKeyboard(CRYPTO_SYMBOLS, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.COMPARE_CHOOSE_FIRST, null));
-        sendMessage(chatId, "Choose first cryptocurrency to compare:", keyboard);
+        sendMessage(chatId, "🔄 Compare cryptocurrencies\n\n" +
+                "👉 Please choose the first cryptocurrency from the buttons below.", keyboard);
     }
 
     private void handleCompareChooseFirst(String chatId, User user, String text) {
@@ -927,7 +1016,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         options.remove(symbol);
         ReplyKeyboardMarkup keyboard = createKeyboard(options, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.COMPARE_CHOOSE_SECOND, symbol));
-        sendMessage(chatId, "Choose second cryptocurrency to compare with " + symbol + ":", keyboard);
+        sendMessage(chatId, "🔄 Compare cryptocurrencies\n\n" +
+                "👉 Please choose the second cryptocurrency from the buttons below.", keyboard);
     }
 
     private void handleCompareChooseSecond(String chatId, User user, String text, String firstSymbol) {
@@ -953,8 +1043,10 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             return;
         }
         sendMessage(chatId,
+                "📈 " + s1 + " vs " + s2 + "\n\n" +
                 s1 + ": " + String.format("%.2f", p1) + " " + fiat + "\n" +
-                s2 + ": " + String.format("%.2f", p2) + " " + fiat + "\nRatio (" + fiat + "): " + String.format("%.2f", p1 / p2));
+                s2 + ": " + String.format("%.2f", p2) + " " + fiat + "\n" +
+                "Ratio = " + String.format("%.2f", p1 / p2));
     }
 
     // ===================== PORTFOLIO: Per-crypto history since first purchase =====================
@@ -987,10 +1079,10 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             double diffUsd = currentPriceUsd - firstPriceUsd;
             double percent = firstPriceUsd != 0 ? (diffUsd / firstPriceUsd) * 100 : 0;
             lines.add(String.format(java.util.Locale.US,
-                    "%s: bought at %.2f %s (%.2f USD), now %.2f %s (%.2f USD), change %+.2f%%",
+                    "🔹 %s\n   Bought: %.2f %s (%.2f USD)\n   Now:    %.2f %s (%.2f USD)\n   Change: %.2f%%",
                     symbol, firstPriceFiat, fiat, firstPriceUsd, currentPriceFiat, fiat, currentPriceUsd, percent));
         }
-        sendMessage(chatId, "Per-crypto change since first purchase:\n" + String.join("\n", lines));
+        sendMessage(chatId, "📊 Per-crypto change (since first purchase):\n\n" + String.join("\n", lines));
     }
 
     // ===================== ALERTS COMMANDS =====================
@@ -1016,13 +1108,13 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         }
 
         String userFiat = getUserFiat(user);
-        StringBuilder sb = new StringBuilder("Your active custom alerts:\n");
+        StringBuilder sb = new StringBuilder("🔔 *Your active alerts*\n\n");
         for (CryptoInformationModule.UserAlertInfo alert : alerts) {
             String formattedTarget = formatAlertTargetValue(alert, userFiat);
             sb.append(String.format(java.util.Locale.US, "ID: %d | %s | %s | Target: %s\n",
                 alert.getId(), alert.getSymbol(), alert.getType(), formattedTarget));
         }
-        sendMessage(chatId, sb.toString());
+        sendMessage(chatId, sb.toString().trim());
     }
 
     private String formatAlertTargetValue(CryptoInformationModule.UserAlertInfo alert, String userFiat) {
@@ -1047,7 +1139,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             sendMessage(chatId, "You have no active custom alerts to delete.");
             return;
         }
-        StringBuilder sb = new StringBuilder("Active alerts:\n");
+        StringBuilder sb = new StringBuilder("🔔 Your active alerts:\n\n");
         for (CryptoInformationModule.UserAlertInfo alert : alerts) {
             String formattedTarget = formatAlertTargetValue(alert, getUserFiat(user));
             sb.append(String.format(java.util.Locale.US, "ID: %d | %s | %s | Target: %s\n",
@@ -1057,7 +1149,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         List<String> buttons = alerts.stream().map(a -> String.valueOf(a.getId())).collect(Collectors.toList());
         ReplyKeyboardMarkup keyboard = createKeyboard(buttons, 4);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.DELETE_ALERT_CHOOSE, null));
-        sendMessage(chatId, "Choose the ID of the alert to delete:", keyboard);
+        sendMessage(chatId, "👉 Please choose the ID of the alert to delete:", keyboard);
     }
 
     private void handleDeleteAlertChoose(String chatId, User user, String text) {
@@ -1078,7 +1170,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private void handleSetAlertStart(String chatId, User user) {
         ReplyKeyboardMarkup keyboard = createKeyboard(CRYPTO_SYMBOLS, 3);
         pendingCommands.put(chatId, new PendingCommand(PendingAction.SET_ALERT_CHOOSE, null));
-        sendMessage(chatId, "Choose a crypto to create an alert for:", keyboard);
+        sendMessage(chatId, "🔔 Create price alert\n\n" +
+                "👉 Please choose a cryptocurrency from the buttons below to set up a price alert.", keyboard);
     }
 
     private void handleSetAlertChoose(String chatId, User user, String text) {
@@ -1094,7 +1187,9 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         PendingCommand next = new PendingCommand(PendingAction.SET_ALERT_TYPE, normalized);
         pendingCommands.put(chatId, next);
         
-        sendMessage(chatId, "Choose alert type:\nPRICE - trigger when price crosses target.\nPERCENT - trigger when price changes by % from current.", keyboard);
+        sendMessage(chatId, "🔔 Choose alert type\n👉 Please choose one of the options below:\n" +
+                "📊 PRICE – Trigger when price crosses your target value.\n" +
+                "📈 PERCENT – Trigger when price changes by a certain % from current price.", keyboard);
     }
 
     private void handleSetAlertType(String chatId, User user, String text, String symbol) {
@@ -1115,9 +1210,13 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 : "";
 
         if (type.equals("PRICE")) {
-            sendMessage(chatId, priceInfo + "Enter the target price for " + symbol + " in " + fiat + ":");
+            sendMessage(chatId, "📊 Set price alert for " + symbol + "\n" +
+                    priceInfo + "\n" +
+                    "🎯 Enter your target price in " + fiat + ":");
         } else {
-            sendMessage(chatId, priceInfo + "Enter the percentage change (e.g. 5.5) for " + symbol + ":");
+            sendMessage(chatId, "📊 Set percent change alert for " + symbol + "\n" +
+                    priceInfo + "\n" +
+                    "🎯 Enter the percentage change in %:");
         }
     }
 
@@ -1139,7 +1238,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     }
 
     private void sendCurrentFiat(String chatId, User user) {
-        sendMessage(chatId, "Current fiat currency: " + getUserFiat(user));
+        sendMessage(chatId, "💰 Current fiat currency: " + getUserFiat(user) + "\n\n" +
+                "ℹ️ To change it, use the /set_fiat command.");
     }
 
     private String getUserFiat(User user) {
