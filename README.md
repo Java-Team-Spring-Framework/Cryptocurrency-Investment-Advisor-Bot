@@ -7,7 +7,7 @@ Telegram‑бот, который помогает пользователям с
 
 ## 🔗 Ссылки
 - **Репозиторий GitHub**: [Cryptocurrency-Investment-Advisor-Bot](https://github.com/Java-Team-Spring-Framework/Cryptocurrency-Investment-Advisor-Bot)
-- **Telegram бот**: [@@javacryptomknbot] 
+- **Telegram бот**: [@javacryptomknbot] 
 - **Docker Hub образ**: 
 
 ---
@@ -206,50 +206,89 @@ $env:API_TOKEN          = "токен_админа"
 - `/start` 
 
 
-- `/menu` 
-
 - `/set_fiat` 
+
+![alt text](readme/image-1.png)
 
 - `/current_fiat` 
 
+![alt text](readme/image.png)
+
 - `/add_tracked_crypto` 
+
+![alt text](readme/image-2.png)
 
 - `/remove_tracked_crypto` 
 
+![alt text](readme/image-4.png)
 
 - `/tracked` 
+
+![alt text](readme/image-3.png)
+
 - `/price_crypto` 
 
+![alt text](readme/image-5.png)
 
 - `/price_history` 
 
+![alt text](readme/image-7.png)
+
 - `/compare` 
+
+![alt text](readme/image-8.png)
 
 - `/portfolio_add` 
 
+![alt text](readme/image-6.png)
+
 - `/portfolio_remove`
+
+![alt text](readme/image-9.png)
 
 - `/portfolio` 
 
+![alt text](readme/image-10.png)
+
 - `/portfolio_amount`
+
+![alt text](readme/image-11.png)
 
 - `/portfolio_history` 
 
+![alt text](readme/image-12.png)
+
 - `/portfolio_crypto_history` 
+
+![alt text](readme/image-13.png)
 
 - `/set_alert` 
 
+![alt text](readme/image-14.png)
+
 - `/alerts_list` 
+
+![alt text](readme/image-15.png)
 
 - `/delete_alert` 
 
+![alt text](readme/image-16.png)
+
 - `/alerts` 
+
+![alt text](readme/image-17.png)
 
 - `/llm_analyze <тикер>` 
 
+![alt text](readme/image-18.png)
+
 - `/llm_portfolio` 
 
+![alt text](readme/image-19.png)
+
 - `/llm_ask <вопрос>` 
+
+![alt text](readme/image-20.png)
 
 
 
