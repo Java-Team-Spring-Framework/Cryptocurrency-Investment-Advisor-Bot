@@ -61,52 +61,82 @@ public class AlertsHandlingModule implements InitializingBean {
 
     @Override
     public void afterPropertiesSet() {
-        log.info("Initializing Alerts Module...");
-        try {
-            rabbitAdmin.initialize();
-            log.info("RabbitMQ Admin initialized successfully");
-        } catch (Exception e) {
-            log.error(
-                "Failed to initialize RabbitMQ Admin: {}",
-                e.getMessage()
-            );
-        }
-        try {
-            rabbitListenerEndpointRegistry.start();
-            log.info("RabbitListenerEndpointRegistry manually started");
-        } catch (Exception e) {
-            log.error("Failed to start listener registry: {}", e.getMessage());
-        }
-        initQueueFromDb();
+        log.info("Scheduling Alerts Module initialization in background...");
 
-        new Thread(() -> {
-            log.info("Starting manual RabbitMQ poller for debugging...");
-            while (true) {
+        Thread alertsInitThread = new Thread(
+            () -> {
+                log.info("Initializing Alerts Module...");
                 try {
-                    org.springframework.amqp.core.Message message =
-                        rabbitMQService
-                            .getRabbitTemplate()
-                            .receive(RabbitConfig.QUEUE_ALERTS_CHECK, 2000);
-                    if (message != null) {
-                        String body = new String(message.getBody());
-                        log.error(
-                            "!!! MANUAL POLLER RECEIVED MESSAGE: {}",
-                            body
-                        );
-                        // Convert manually
-                        AlertCheckMessage task =
-                            new com.fasterxml.jackson.databind.ObjectMapper().readValue(
-                                body,
-                                AlertCheckMessage.class
-                            );
-                        processAlertCheck(task);
-                    }
+                    rabbitAdmin.initialize();
+                    log.info("RabbitMQ Admin initialized successfully");
                 } catch (Exception e) {
-                    log.error("Manual poller error: {}", e.getMessage());
+                    log.error(
+                        "Failed to initialize RabbitMQ Admin: {}",
+                        e.getMessage()
+                    );
                 }
-            }
-        })
-            .start();
+                try {
+                    rabbitListenerEndpointRegistry.start();
+                    log.info("RabbitListenerEndpointRegistry manually started");
+                } catch (Exception e) {
+                    log.error(
+                        "Failed to start listener registry: {}",
+                        e.getMessage()
+                    );
+                }
+
+                try {
+                    initQueueFromDb();
+                } catch (Exception e) {
+                    log.error(
+                        "Failed to initialize alerts from DB: {}",
+                        e.getMessage(),
+                        e
+                    );
+                }
+
+                startManualRabbitPoller();
+            },
+            "alerts-module-init"
+        );
+
+        alertsInitThread.setDaemon(true);
+        alertsInitThread.start();
+    }
+
+    private void startManualRabbitPoller() {
+        Thread pollerThread = new Thread(
+            () -> {
+                log.info("Starting manual RabbitMQ poller for debugging...");
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        org.springframework.amqp.core.Message message =
+                            rabbitMQService
+                                .getRabbitTemplate()
+                                .receive(RabbitConfig.QUEUE_ALERTS_CHECK, 2000);
+                        if (message != null) {
+                            String body = new String(message.getBody());
+                            log.error(
+                                "!!! MANUAL POLLER RECEIVED MESSAGE: {}",
+                                body
+                            );
+                            AlertCheckMessage task =
+                                new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                                    body,
+                                    AlertCheckMessage.class
+                                );
+                            processAlertCheck(task);
+                        }
+                    } catch (Exception e) {
+                        log.error("Manual poller error: {}", e.getMessage());
+                    }
+                }
+            },
+            "alerts-rabbit-poller"
+        );
+
+        pollerThread.setDaemon(true);
+        pollerThread.start();
     }
 
     private void initQueueFromDb() {

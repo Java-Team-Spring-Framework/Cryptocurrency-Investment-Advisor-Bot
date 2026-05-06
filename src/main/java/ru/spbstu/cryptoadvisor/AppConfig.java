@@ -1,5 +1,7 @@
 package ru.spbstu.cryptoadvisor;
 
+import java.sql.SQLException;
+import javax.sql.DataSource;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -9,18 +11,13 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.PropertySource;
-import org.springframework.web.reactive.config.EnableWebFlux;
-import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.scheduling.annotation.EnableScheduling;
-
-import javax.sql.DataSource;
-import java.sql.SQLException;
+import org.springframework.web.reactive.function.client.WebClient;
 
 @Configuration
 @ComponentScan("ru.spbstu.cryptoadvisor")
 @PropertySource("classpath:application.properties")
-@EnableWebFlux
 @EnableScheduling
 public class AppConfig {
 
@@ -56,7 +53,8 @@ public class AppConfig {
 
     @Bean
     public com.fasterxml.jackson.databind.ObjectMapper objectMapper() {
-        return new com.fasterxml.jackson.databind.ObjectMapper()
-                .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        return new com.fasterxml.jackson.databind.ObjectMapper().registerModule(
+            new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule()
+        );
     }
 }

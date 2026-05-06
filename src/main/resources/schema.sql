@@ -87,15 +87,9 @@ INSERT INTO crypto_currency (symbol, name) VALUES ('AVAX', 'Avalanche') ON CONFL
 INSERT INTO crypto_currency (symbol, name) VALUES ('NEAR', 'NEAR Protocol') ON CONFLICT (symbol) DO NOTHING;
 INSERT INTO crypto_currency (symbol, name) VALUES ('LTC', 'Litecoin') ON CONFLICT (symbol) DO NOTHING;
 
--- Migration: add alert_reason column if missing (for existing databases)
-DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='alert_history' AND column_name='alert_reason') THEN
-        ALTER TABLE alert_history ADD COLUMN alert_reason VARCHAR(100) NOT NULL DEFAULT 'UNKNOWN';
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='alert_history' AND column_name='user_id') THEN
-        ALTER TABLE alert_history ADD COLUMN user_id INTEGER REFERENCES "user"(user_id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='alert_history' AND column_name='symbol') THEN
-        ALTER TABLE alert_history ADD COLUMN symbol VARCHAR(20);
-    END IF;
-END $$;
+-- Migrations for existing databases.
+-- Keep each migration as a single plain SQL statement because Spring ScriptUtils
+-- splits statements by ';' and cannot safely execute PostgreSQL DO $$ ... $$ blocks.
+ALTER TABLE alert_history ADD COLUMN IF NOT EXISTS alert_reason VARCHAR(100) NOT NULL DEFAULT 'UNKNOWN';
+ALTER TABLE alert_history ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES "user"(user_id);
+ALTER TABLE alert_history ADD COLUMN IF NOT EXISTS symbol VARCHAR(20);

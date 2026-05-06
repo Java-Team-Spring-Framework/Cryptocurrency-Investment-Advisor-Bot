@@ -1,27 +1,45 @@
 package ru.spbstu.cryptoadvisor;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.http.server.reactive.HttpHandler;
-import org.springframework.http.server.reactive.ReactorHttpHandlerAdapter;
-import org.springframework.web.server.adapter.WebHttpHandlerBuilder;
 import reactor.netty.http.server.HttpServer;
 
 public class Application {
 
-    public static void main(String[] args) {
-        AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext("ru.spbstu.cryptoadvisor");
-        context.start(); // Start SmartLifecycle beans like RabbitListenerEndpointRegistry
-        
-        HttpHandler httpHandler = WebHttpHandlerBuilder.applicationContext(context).build();
-        ReactorHttpHandlerAdapter adapter = new ReactorHttpHandlerAdapter(httpHandler);
+    private static final Logger log = LoggerFactory.getLogger(
+        Application.class
+    );
 
-        int port = Integer.parseInt(System.getenv().getOrDefault("SERVER_PORT", "8080"));
+    public static void main(String[] args) {
+        log.info("Starting Cryptocurrency Investment Advisor Bot...");
+
+        // Поднимаем Spring-контекст (DI, JooQ, RabbitMQ, Telegram-бот и т.д.)
+        AnnotationConfigApplicationContext context =
+            new AnnotationConfigApplicationContext("ru.spbstu.cryptoadvisor");
+        context.start();
+        Runtime.getRuntime().addShutdownHook(
+            new Thread(context::close, "spring-context-shutdown")
+        );
+        log.info("Spring context started successfully.");
+
+        // Получаем наш HTTP-обработчик из контекста
+        ApiHandler apiHandler = context.getBean(ApiHandler.class);
+
+        int port = Integer.parseInt(
+            System.getenv().getOrDefault("SERVER_PORT", "8080")
+        );
+        log.info("Starting HTTP server on port {}...", port);
+
+        // Reactor Netty напрямую — без Spring WebFlux WebHttpHandlerBuilder.
+        // Это обходит все проблемы совместимости Spring 7 (non-Boot) с
+        // WebFluxConfigurationSupport / DispatcherHandler / RouterFunctionMapping.
         HttpServer.create()
-                .host("0.0.0.0")
-                .port(port)
-                .handle(adapter)
-                .bindNow()
-                .onDispose()
-                .block();
+            .host("0.0.0.0")
+            .port(port)
+            .handle(apiHandler::handle)
+            .bindNow()
+            .onDispose()
+            .block();
     }
 }

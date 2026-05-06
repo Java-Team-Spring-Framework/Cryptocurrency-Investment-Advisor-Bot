@@ -9,14 +9,13 @@ public class AuthAdminModule {
 
     public void validateBearerToken(String authorizationHeader) {
         if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "Missing or invalid Authorization header");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token");
         }
 
         String token = authorizationHeader.substring("Bearer ".length()).trim();
         String expectedToken = System.getenv("API_TOKEN");
-        if (expectedToken == null || expectedToken.isBlank() || !expectedToken.equals(token)) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid admin token");
+        if (expectedToken == null || !expectedToken.equals(token)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid token");
         }
     }
 }
