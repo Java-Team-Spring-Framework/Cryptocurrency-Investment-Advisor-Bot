@@ -7,8 +7,8 @@ Telegram‑бот, который помогает пользователям с
 
 ## 🔗 Ссылки
 - **Репозиторий GitHub**: [Cryptocurrency-Investment-Advisor-Bot](https://github.com/Java-Team-Spring-Framework/Cryptocurrency-Investment-Advisor-Bot)
-- **Telegram бот**: [@CryptoAdvisorBot] *(Добавьте ссылку на вашего бота)*
-- **Docker Hub образ**: *(Укажите ссылку на опубликованный образ)*
+- **Telegram бот**: [@@javacryptomknbot] 
+- **Docker Hub образ**: 
 
 ---
 
@@ -68,10 +68,11 @@ Telegram‑бот, который помогает пользователям с
 
 ## 🔧 Настройка переменных окружения
 
-Создайте в корне проекта файл **`.env`** (можно скопировать из `.env.example`, если он есть):
+Создайте в корне проекта файл **`.env`**:
 
 ```env
 # Telegram Bot
+
 TELEGRAM_BOT_TOKEN=ваш_токен_от_BotFather
 
 # OpenRoute API (LLM)
@@ -84,7 +85,7 @@ API_TOKEN=ваш_секретный_токен_администратора
 SERVER_PORT=8080
 ```
 
-*При использовании docker-compose переменные для подключения к PostgreSQL и RabbitMQ обычно прописываются непосредственно в конфигурации `docker-compose.yml`.*
+
 
 ---
 
@@ -157,7 +158,7 @@ $env:API_TOKEN          = "токен_админа"
 
 ## 🖼 Взаимодействие с ботом (Список команд)
 
-- `/start` — Инициализация, выбор фиата (USD) и крипты (BTC) по умолчанию.
+- `/start` — Инициализация, регистрация
 - `/menu` — Показать главное меню (кнопки).
 - `/set_fiat` — Выбор фиатной валюты.
 - `/current_fiat` — Показать текущую фиатную валюту.
@@ -194,11 +195,63 @@ $env:API_TOKEN          = "токен_админа"
    - **Описание**: Возвращает статус приложения.
 
 2. **Получение списка пользователей (Admin Only)**
-   - **Метод**: `GET http://localhost:8080/admin/users` *(в ТЗ: `/users`)*
+   - **Метод**: `GET http://localhost:8080/admin/users`
    - **Авторизация**: Требуется HTTP-заголовок `Authorization: Bearer <API_TOKEN>`
    - **Описание**: Возвращает массив зарегистрированных пользователей. Запросы без валидного ключа отклоняются.
 
 ---
+
+## Пример взаимодействия с ботом
+
+- `/start` 
+
+
+- `/menu` 
+
+- `/set_fiat` 
+
+- `/current_fiat` 
+
+- `/add_tracked_crypto` 
+
+- `/remove_tracked_crypto` 
+
+
+- `/tracked` 
+- `/price_crypto` 
+
+
+- `/price_history` 
+
+- `/compare` 
+
+- `/portfolio_add` 
+
+- `/portfolio_remove`
+
+- `/portfolio` 
+
+- `/portfolio_amount`
+
+- `/portfolio_history` 
+
+- `/portfolio_crypto_history` 
+
+- `/set_alert` 
+
+- `/alerts_list` 
+
+- `/delete_alert` 
+
+- `/alerts` 
+
+- `/llm_analyze <тикер>` 
+
+- `/llm_portfolio` 
+
+- `/llm_ask <вопрос>` 
+
+
 
 ## 📁 Основные модули системы
 
@@ -209,3 +262,5 @@ $env:API_TOKEN          = "токен_админа"
 - **MessageHandlingModule** — интеграция с OpenRoute API для генерации ответов ИИ-советника.
 - **AuthUserModule / AuthAdminModule** — идентификация пользователей (по chat_id) и проверка ключа администратора.
 - **FiatConversionService** — конвертация фиатных валют по актуальным кросс-курсам.
+
+
