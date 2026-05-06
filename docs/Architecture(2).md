@@ -7,7 +7,7 @@
 * База данных: PostgreSQL 18.3  
 * Контейнеризации приложения: Docker, Docker Compose  
 * Логирование: SLF4J  
-* Тестирование: JUnit
+
 
 2. #  Компонентная диаграмма
 <img width="1902" height="1372" alt="Архитектура" src="https://github.com/user-attachments/assets/bc5c8e04-0b26-476e-b9e1-242ef4630901" />
