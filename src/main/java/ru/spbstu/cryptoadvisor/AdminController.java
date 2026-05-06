@@ -3,7 +3,6 @@ package ru.spbstu.cryptoadvisor;
 import org.jooq.DSLContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
@@ -13,7 +12,6 @@ import static org.jooq.impl.DSL.field;
 import static org.jooq.impl.DSL.table;
 
 @RestController
-@RequestMapping("/admin")
 public class AdminController {
 
     private final DSLContext dsl;
@@ -25,9 +23,10 @@ public class AdminController {
     }
 
     @GetMapping("/users")
-    public Flux<Map<String, Object>> getAllUsers(@RequestHeader("Authorization") String authorization) {
+    public Flux<Map<String, Object>> getAllUsers(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
         authAdminModule.validateBearerToken(authorization);
-        
+
         return Flux.fromIterable(
             dsl.select(field("u.user_id"), field("u.chat_id"), field("f.symbol").as("fiat"))
                 .from(table("\"user\"").as("u"))
