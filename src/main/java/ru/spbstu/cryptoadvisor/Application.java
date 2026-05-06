@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import reactor.netty.http.server.HttpServer;
 
+import ru.spbstu.cryptoadvisor.server.ApiHandler;
+
 public class Application {
 
     private static final Logger log = LoggerFactory.getLogger(
@@ -31,9 +33,6 @@ public class Application {
         );
         log.info("Starting HTTP server on port {}...", port);
 
-        // Reactor Netty напрямую — без Spring WebFlux WebHttpHandlerBuilder.
-        // Это обходит все проблемы совместимости Spring 7 (non-Boot) с
-        // WebFluxConfigurationSupport / DispatcherHandler / RouterFunctionMapping.
         HttpServer.create()
             .host("0.0.0.0")
             .port(port)
