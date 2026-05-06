@@ -206,6 +206,8 @@ $env:API_TOKEN          = "токен_админа"
 
 - `/start` 
 
+<img width="723" height="475" alt="image" src="https://github.com/user-attachments/assets/a7243ef4-60a8-4a32-8f6b-96a8cedeaa94" />
+
 
 - `/set_fiat` 
 
