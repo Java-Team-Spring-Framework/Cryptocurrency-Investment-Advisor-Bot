@@ -1279,27 +1279,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     }
 
     private ReplyKeyboardMarkup createMainMenu() {
-        ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
-        List<KeyboardRow> rows = new ArrayList<>();
-
-        KeyboardRow row1 = new KeyboardRow();
-        row1.add(new KeyboardButton(BTN_SET_FIAT));
-        row1.add(new KeyboardButton(BTN_CURRENT_FIAT));
-        rows.add(row1);
-
-        KeyboardRow row2 = new KeyboardRow();
-        row2.add(new KeyboardButton(BTN_ADD_CRYPTO));
-        row2.add(new KeyboardButton(BTN_REMOVE_CRYPTO));
-        rows.add(row2);
-
-        KeyboardRow row3 = new KeyboardRow();
-        row3.add(new KeyboardButton(BTN_TRACKED));
-        rows.add(row3);
-
-        markup.setKeyboard(rows);
-        markup.setResizeKeyboard(true);
-        markup.setOneTimeKeyboard(false); 
-        return markup;
+        return null;
     }
 
     private void sendMainMenu(String chatId, String text) {
