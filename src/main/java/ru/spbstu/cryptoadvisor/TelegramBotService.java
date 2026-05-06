@@ -32,11 +32,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private static final List<String> FIAT_SYMBOLS = Arrays.asList("USD", "EUR", "JPY", "GBP", "TRY", "RUB", "CNY");
     private static final List<String> CRYPTO_SYMBOLS = Arrays.asList("BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "AVAX", "NEAR", "LTC");
 
-    private static final String BTN_SET_FIAT = "Choose fiat currency";
-    private static final String BTN_CURRENT_FIAT = "Show current fiat";
-    private static final String BTN_ADD_CRYPTO = "Add tracked crypto";
-    private static final String BTN_REMOVE_CRYPTO = "Remove tracked crypto";
-    private static final String BTN_TRACKED = "Current tracked crypto";
+    private static final String BTN_HELP = "Help";
     private static final String BTN_BACK = "Back";
 
     private final String botToken;
@@ -106,7 +102,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 User newUser = authUserModule.registerUser(chatId, username);
                 cryptoInformationModule.ensureDefaultTrackedCurrency(newUser.getId());
                 rabbitMQService.logActivity(chatId, "User registered: " + (username != null ? username : "unknown"));
-                sendMessage(chatId, "Welcome " + (username != null ? username : "") + "! Registration complete.");
+                sendMainMenu(chatId, "Welcome " + (username != null ? username : "") + "! Registration complete. Type /help for commands.");
             } else {
                 sendMessage(chatId, "Please /start first.");
             }
@@ -121,75 +117,60 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 sendMainMenu(chatId, "Action cancelled.");
                 return;
             }
-            switch (pending.action) {
-                case ADD_TRACKED_CHOOSE:
-                    handlePendingAddTrackedChoose(chatId, user, text);
-                    return;
-                case ADD_TRACKED_PRICE:
-                    handlePendingAddTrackedPrice(chatId, user, text, pending.symbol);
-                    return;
-                case REMOVE_TRACKED:
-                    handlePendingRemoveTracked(chatId, user, text);
-                    return;
-                case PORTFOLIO_ADD_CHOOSE_CRYPTO:
-                    handlePortfolioAddChoose(chatId, user, text);
-                    return;
-                case PORTFOLIO_ADD_AMOUNT:
-                    handlePortfolioAddAmount(chatId, user, text, pending.symbol);
-                    return;
-                case PORTFOLIO_REMOVE_CHOOSE_CRYPTO:
-                    handlePortfolioRemoveChoose(chatId, user, text);
-                    return;
-                case PORTFOLIO_REMOVE_AMOUNT:
-                    handlePortfolioRemoveAmount(chatId, user, text, pending.symbol);
-                    return;
-                case PORTFOLIO_HISTORY_PERIOD:
-                    handlePortfolioHistoryPeriod(chatId, user, text);
-                    return;
-                case SET_ALERT_CHOOSE:
-                    handleSetAlertChoose(chatId, user, text);
-                    return;
-                case SET_ALERT_TYPE:
-                    handleSetAlertType(chatId, user, text, pending.symbol);
-                    return;
-                case SET_ALERT_VALUE:
-                    handleSetAlertValue(chatId, user, text, pending.symbol, pending.alertType);
-                    return;
-                case DELETE_ALERT_CHOOSE:
-                    handleDeleteAlertChoose(chatId, user, text);
-                    return;
-                default:
-                    break;
+            if (text.startsWith("/")) {
+                pendingCommands.remove(chatId);
+            }else{
+                switch (pending.action) {
+                    case ADD_TRACKED_CHOOSE:
+                        handlePendingAddTrackedChoose(chatId, user, text);
+                        return;
+                    case ADD_TRACKED_PRICE:
+                        handlePendingAddTrackedPrice(chatId, user, text, pending.symbol);
+                        return;
+                    case REMOVE_TRACKED:
+                        handlePendingRemoveTracked(chatId, user, text);
+                        return;
+                    case PORTFOLIO_ADD_CHOOSE_CRYPTO:
+                        handlePortfolioAddChoose(chatId, user, text);
+                        return;
+                    case PORTFOLIO_ADD_AMOUNT:
+                        handlePortfolioAddAmount(chatId, user, text, pending.symbol);
+                        return;
+                    case PORTFOLIO_REMOVE_CHOOSE_CRYPTO:
+                        handlePortfolioRemoveChoose(chatId, user, text);
+                        return;
+                    case PORTFOLIO_REMOVE_AMOUNT:
+                        handlePortfolioRemoveAmount(chatId, user, text, pending.symbol);
+                        return;
+                    case PORTFOLIO_HISTORY_PERIOD:
+                        handlePortfolioHistoryPeriod(chatId, user, text);
+                        return;
+                    case SET_ALERT_CHOOSE:
+                        handleSetAlertChoose(chatId, user, text);
+                        return;
+                    case SET_ALERT_TYPE:
+                        handleSetAlertType(chatId, user, text, pending.symbol);
+                        return;
+                    case SET_ALERT_VALUE:
+                        handleSetAlertValue(chatId, user, text, pending.symbol, pending.alertType);
+                        return;
+                    case DELETE_ALERT_CHOOSE:
+                        handleDeleteAlertChoose(chatId, user, text);
+                        return;
+                    default:
+                        break;
+                }
             }
         }
 
-        switch (text) {
-            case BTN_SET_FIAT:
-                sendFiatSelection(chatId);
-                return;
-            case BTN_CURRENT_FIAT:
-                sendCurrentFiat(chatId, user);
-                return;
-            case BTN_ADD_CRYPTO:
-                sendAddTrackedSelection(chatId);
-                return;
-            case BTN_REMOVE_CRYPTO:
-                sendRemoveTrackedSelection(chatId, user);
-                return;
-            case BTN_TRACKED:
-                sendTrackedList(chatId, user);
-                return;
-            case BTN_BACK:
-                sendMainMenu(chatId, "Menu");
-                return;
+        if (BTN_HELP.equals(text)) {
+            sendHelp(chatId);
+            return;
         }
 
         switch (command) {
             case "/start":
                 sendMainMenu(chatId, "Welcome back, " + (username != null ? username : "") + "!");
-                break;
-            case "/menu":
-                sendMainMenu(chatId, "Menu:");
                 break;
             case "/set_fiat":
                 if (parts.length > 1) {
@@ -375,29 +356,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 }
                 break;
             case "/help":
-                sendMessage(chatId, "Available commands:\n" +
-                        "/start - Register\n" +
-                        "/set_fiat - Choose fiat currency\n" +
-                        "/current_fiat - Show current fiat\n" +
-                        "/add_tracked_crypto - Add tracked crypto\n" +
-                        "/remove_tracked_crypto - Remove tracked crypto\n" +
-                        "/tracked - View tracked cryptos\n" +
-                        "/price_crypto <symbol> - Get current price\n" +
-                        "/portfolio_add - Add asset to portfolio\n" +
-                        "/portfolio_remove - Remove asset from portfolio\n" +
-                        "/portfolio - View portfolio with prices\n" +
-                        "/portfolio_amount - View total portfolio value\n" +
-                        "/portfolio_history - Portfolio value change over period\n" +
-                        "/portfolio_crypto_history - Per-crypto change since purchase\n" +
-                        "/set_alert - Create a custom alert (Price or Percent)\n" +
-                        "/alerts_list - View your active custom alerts\n" +
-                        "/delete_alert - Delete a custom alert\n" +
-                        "/alerts - View recent alert history (last 7 days)\n" +
-                        "/compare <symbol1> <symbol2> - Compare two cryptos\n" +
-                        "/price_history <symbol> <days> - View price history\n" +
-                        "/llm_analyze <symbol> - LLM investment analysis\n" +
-                        "/llm_portfolio - LLM portfolio review\n" +
-                        "/llm_ask <question> - Ask the LLM about crypto");
+                sendHelp(chatId);
                 break;
             default:
                 if (isAllowedFiat(text)) {
@@ -483,23 +442,32 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     }
 
     private void handlePendingAddTrackedPrice(String chatId, User user, String text, String symbol) {
+        double targetPrice;
         try {
-            double targetPrice = Double.parseDouble(text);
-            if (targetPrice < 0) {
-                sendMessage(chatId, "Price cannot be negative.");
-                return;
-            }
+            targetPrice = Double.parseDouble(text);
+        } catch (NumberFormatException e) {
+            sendMessage(chatId, "Please enter a valid number for " + symbol + " price (or press Back to cancel).");
+            return; 
+        }
+
+        if (targetPrice < 0) {
+            sendMessage(chatId, "Price cannot be negative. Please try again or press Back.");
+            return; 
+        }
+
+        pendingCommands.remove(chatId);
+
+        try {
             if (cryptoInformationModule.addTrackedCurrency(user.getId(), symbol, targetPrice, getUserFiat(user))) {
                 sendMainMenu(chatId, "Added " + symbol + " to watchlist. Every 24h you will receive notifications for 5% changes.");
                 if (targetPrice > 0) {
                     sendMessage(chatId, "Custom price alert for " + symbol + " created with target " + targetPrice + " " + getUserFiat(user) + ".");
                 }
             } else {
-                sendMessage(chatId, "Could not add " + symbol + ".");
+                sendMainMenu(chatId, "Could not add " + symbol + ". It might already be tracked.");
             }
-            pendingCommands.remove(chatId);
-        } catch (NumberFormatException e) {
-            sendMessage(chatId, "Please enter a valid price for " + symbol + ".");
+        } catch (Exception e) {
+            sendMainMenu(chatId, "Error adding " + symbol + ": " + e.getMessage());
         }
     }
 
@@ -948,20 +916,33 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     }
 
     private void handleSetAlertValue(String chatId, User user, String text, String symbol, String type) {
+        double targetValue;
         try {
-            double targetValue = Double.parseDouble(text);
-            if (targetValue <= 0) {
-                sendMessage(chatId, "Value must be positive.");
-                return;
-            }
-            String fiat = getUserFiat(user);
-            cryptoInformationModule.addUserAlert(user.getId(), symbol, type, targetValue, fiat);
-            
-            sendMainMenu(chatId, "Successfully created " + type + " alert for " + symbol + " with target " + targetValue + (type.equals("PERCENT") ? "%" : " " + fiat) + ".");
+            targetValue = Double.parseDouble(text);
         } catch (NumberFormatException e) {
-            sendMessage(chatId, "Invalid number format. Please enter a valid number.");
+            sendMessage(chatId, "Invalid number format. Please enter a valid number (or press Back to cancel).");
+            return; 
         }
+
+        if (targetValue <= 0) {
+            sendMessage(chatId, "Value must be positive. Please try again or press Back.");
+            return; 
+        }
+
         pendingCommands.remove(chatId);
+
+        sendMessage(chatId, "Creating " + type + " alert for " + symbol + " with target " 
+                + targetValue + (type.equals("PERCENT") ? "%" : " " + getUserFiat(user)) 
+                + "... Please wait.");
+
+        String fiat = getUserFiat(user);
+        try {
+            Integer alertId = cryptoInformationModule.addUserAlert(user.getId(), symbol, type, targetValue, fiat);
+            sendMainMenu(chatId, "Alert #" + alertId + " created successfully.");
+        } catch (Exception e) {
+            log.error("Failed to create alert for user {}", user.getId(), e);
+            sendMainMenu(chatId, "Failed to create alert: " + e.getMessage());
+        }
     }
 
     private void sendCurrentFiat(String chatId, User user) {
@@ -978,6 +959,32 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
 
     private boolean isAllowedCrypto(String symbol) {
         return CRYPTO_SYMBOLS.contains(symbol.toUpperCase());
+    }
+
+    private void sendHelp(String chatId) {
+        sendMessage(chatId, "Available commands:\n" +
+                "/start - Register\n" +
+                "/set_fiat - Choose fiat currency\n" +
+                "/current_fiat - Show current fiat\n" +
+                "/add_tracked_crypto - Add tracked crypto\n" +
+                "/remove_tracked_crypto - Remove tracked crypto\n" +
+                "/tracked - View tracked cryptos\n" +
+                "/price_crypto <symbol> - Get current price\n" +
+                "/portfolio_add - Add asset to portfolio\n" +
+                "/portfolio_remove - Remove asset from portfolio\n" +
+                "/portfolio - View portfolio with prices\n" +
+                "/portfolio_amount - View total portfolio value\n" +
+                "/portfolio_history - Portfolio value change over period\n" +
+                "/portfolio_crypto_history - Per-crypto change since purchase\n" +
+                "/set_alert - Create a custom alert (Price or Percent)\n" +
+                "/alerts_list - View your active custom alerts\n" +
+                "/delete_alert - Delete a custom alert\n" +
+                "/alerts - View recent alert history (last 7 days)\n" +
+                "/compare <symbol1> <symbol2> - Compare two cryptos\n" +
+                "/price_history <symbol> <days> - View price history\n" +
+                "/llm_analyze <symbol> - LLM investment analysis\n" +
+                "/llm_portfolio - LLM portfolio review\n" +
+                "/llm_ask <question> - Ask the LLM about crypto");
     }
 
     private ReplyKeyboardMarkup createKeyboard(List<String> buttons, int rowSize) {
@@ -1004,32 +1011,20 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         return markup;
     }
 
-    private ReplyKeyboardMarkup createMainMenu() {
+    private ReplyKeyboardMarkup createPersistentMenu() {
         ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
         List<KeyboardRow> rows = new ArrayList<>();
-
-        KeyboardRow row1 = new KeyboardRow();
-        row1.add(new KeyboardButton(BTN_SET_FIAT));
-        row1.add(new KeyboardButton(BTN_CURRENT_FIAT));
-        rows.add(row1);
-
-        KeyboardRow row2 = new KeyboardRow();
-        row2.add(new KeyboardButton(BTN_ADD_CRYPTO));
-        row2.add(new KeyboardButton(BTN_REMOVE_CRYPTO));
-        rows.add(row2);
-
-        KeyboardRow row3 = new KeyboardRow();
-        row3.add(new KeyboardButton(BTN_TRACKED));
-        rows.add(row3);
-
+        KeyboardRow row = new KeyboardRow();
+        row.add(new KeyboardButton(BTN_HELP));
+        rows.add(row);
         markup.setKeyboard(rows);
         markup.setResizeKeyboard(true);
-        markup.setOneTimeKeyboard(false); 
+        markup.setOneTimeKeyboard(false); // постоянная кнопка
         return markup;
     }
 
     private void sendMainMenu(String chatId, String text) {
-        sendMessage(chatId, text, createMainMenu());
+        sendMessage(chatId, text, createPersistentMenu());
     }
 
     private void sendMessage(String chatId, String text, ReplyKeyboardMarkup markup) {
