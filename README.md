@@ -92,6 +92,16 @@ SERVER_PORT=8080
 
 Убедитесь, что файл `.env` создан и Docker (Docker Desktop) запущен.
 
+```powershell
+docker-compose up --build -d
+```
+
+Если образ приложения уже собран:
+```powershell
+docker-compose up -d
+```
+#### 2. Запуск контейнеров (Приложение + PostgreSQL + RabbitMQ)
+
 #### 1. Сборка fat‑jar (через Gradle)
 
 Для Windows:
@@ -103,16 +113,6 @@ SERVER_PORT=8080
 ./gradlew build -x test
 ```
 
-#### 2. Запуск контейнеров (Приложение + PostgreSQL + RabbitMQ)
-
-```powershell
-docker-compose up --build -d
-```
-
-Если образ приложения уже собран:
-```powershell
-docker-compose up -d
-```
 
 #### 3. Проверка логов приложения
 
