@@ -8,7 +8,7 @@ Telegram‑бот, который помогает пользователям с
 ## 🔗 Ссылки
 - **Репозиторий GitHub**: [Cryptocurrency-Investment-Advisor-Bot](https://github.com/Java-Team-Spring-Framework/Cryptocurrency-Investment-Advisor-Bot)
 - **Telegram бот**: [@javacryptomknbot] 
-- **Docker Hub образ**: 
+- **Docker Hub образ**: https://hub.docker.com/r/sergger/crypto-advisor-bot
 
 ---
 
