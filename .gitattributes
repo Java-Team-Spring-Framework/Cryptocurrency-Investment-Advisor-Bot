@@ -1,0 +1,11 @@
+*.java text
+*.kt text
+*.kts text
+*.properties text
+*.yml text
+*.yaml text
+*.md text
+*.sh text eol=lf
+*.bat text eol=crlf
+*.jar binary
+gradle-wrapper.jar binary
