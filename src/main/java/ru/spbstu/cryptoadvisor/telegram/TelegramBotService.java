@@ -20,11 +20,14 @@ import ru.spbstu.cryptoadvisor.api.rabbitmq.RabbitMQService;
 import ru.spbstu.cryptoadvisor.auth.AuthUserModule;
 import ru.spbstu.cryptoadvisor.crypto.CryptoInformationModule;
 import ru.spbstu.cryptoadvisor.crypto.FiatConversionService;
+import ru.spbstu.cryptoadvisor.message.LLMPromptBuilder;
 import ru.spbstu.cryptoadvisor.message.MessageHandlingModule;
 import ru.spbstu.cryptoadvisor.portfolio.PortfolioManagementModule;
 import ru.spbstu.cryptoadvisor.users.User;
 import ru.spbstu.cryptoadvisor.users.UserRepository;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -55,6 +58,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
     private final CryptoInformationModule cryptoInformationModule;
     private final PortfolioManagementModule portfolioManagementModule;
     private final MessageHandlingModule messageHandlingModule;
+    private final LLMPromptBuilder llmPromptBuilder;
     private final UserRepository userRepository;
     private final BingXService bingXService;
     private final FiatConversionService fiatConversionService;
@@ -66,6 +70,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                               CryptoInformationModule cryptoInformationModule,
                               PortfolioManagementModule portfolioManagementModule,
                               MessageHandlingModule messageHandlingModule,
+                              LLMPromptBuilder llmPromptBuilder,
                               UserRepository userRepository,
                               BingXService bingXService,
                               FiatConversionService fiatConversionService,
@@ -75,6 +80,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         this.cryptoInformationModule = cryptoInformationModule;
         this.portfolioManagementModule = portfolioManagementModule;
         this.messageHandlingModule = messageHandlingModule;
+        this.llmPromptBuilder = llmPromptBuilder;
         this.userRepository = userRepository;
         this.bingXService = bingXService;
         this.fiatConversionService = fiatConversionService;
@@ -286,30 +292,50 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             case "/portfolio":
                 handlePortfolioView(chatId, user);
                 break;
+            // LLM commands
             case "/llm_analyze":
                 if (parts.length > 1) {
-                    sendMessage(chatId, "Requesting investment analysis for " + parts[1] + "...");
-                    String analysis = messageHandlingModule.analyzeCryptoInvestment(parts[1]).block();
+                    String symbol = parts[1].toUpperCase();
+                    String fiat = getUserFiat(user);
+                    sendMessage(chatId, "Requesting investment analysis for " + symbol + "...");
+                    Double currentPrice = getCurrentPriceForAnalysis(symbol, fiat);
+                    String priceHistorySummary = buildSymbolPriceHistorySummary(symbol, fiat, currentPrice);
+                    String prompt = llmPromptBuilder.buildAnalyzeCryptoInvestmentPrompt(symbol, fiat, currentPrice, priceHistorySummary);
+                    String analysis = messageHandlingModule.sendPrompt(prompt).block();
                     sendMessage(chatId, analysis != null ? analysis : "No response received.");
                 } else {
                     sendMessage(chatId, "Usage: /llm_analyze <symbol>");
                 }
                 break;
             case "/llm_portfolio":
-                Map<String, Double> p = portfolioManagementModule.getPortfolio(user.getId());
-                if (p.isEmpty()) {
-                    sendMessage(chatId, "Your portfolio is empty.");
-                } else {
-                    String portfolioStr = p.entrySet().stream().map(e -> e.getKey() + ":" + e.getValue()).collect(Collectors.joining(", "));
+                {
+                    String fiat = getUserFiat(user);
+                    Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+                    if (portfolio.isEmpty()) {
+                        sendMessage(chatId, "Your portfolio is empty.");
+                        break;
+                    }
+                    Map<String, Double> firstPrices = portfolioManagementModule.getFirstPurchasePrices(user.getId());
+                    Map<String, LocalDateTime> firstDates = portfolioManagementModule.getFirstPurchaseDates(user.getId());
+                    String portfolioSummary = buildPortfolioSummary(fiat, portfolio);
+                    String portfolioPerformanceSummary = buildPortfolioPerformanceSummary(fiat, portfolio, firstPrices, firstDates);
+                    String priceHistorySummary = buildPortfolioPriceHistorySummary(fiat, portfolio);
+                    String prompt = llmPromptBuilder.buildPortfolioReviewPrompt(portfolioSummary, portfolioPerformanceSummary, priceHistorySummary);
                     sendMessage(chatId, "Reviewing your portfolio...");
-                    String portfolioReview = messageHandlingModule.askOpenRouter("Review this cryptocurrency portfolio and suggest improvements: " + portfolioStr).block();
+                    String portfolioReview = messageHandlingModule.sendPrompt(prompt).block();
                     sendMessage(chatId, portfolioReview != null ? portfolioReview : "No response received.");
                 }
                 break;
             case "/llm_ask":
                 if (parts.length > 1) {
                     String query = text.substring(command.length() + 1);
-                    String answer = messageHandlingModule.askOpenRouter(query).block();
+                    String fiat = getUserFiat(user);
+                    Map<String, Double> portfolio = portfolioManagementModule.getPortfolio(user.getId());
+                    String portfolioSummary = portfolio.isEmpty() ? "Portfolio is empty." : buildPortfolioSummary(fiat, portfolio);
+                    String priceHistorySummary = portfolio.isEmpty() ? "No recent portfolio price history available." : buildPortfolioPriceHistorySummary(fiat, portfolio);
+                    sendMessage(chatId, "Your question has been received and is being processed...");
+                    String prompt = llmPromptBuilder.buildAskPrompt(query, portfolioSummary, priceHistorySummary);
+                    String answer = messageHandlingModule.sendPrompt(prompt).block();
                     sendMessage(chatId, answer != null ? answer : "No response received.");
                 } else {
                     sendMessage(chatId, "Usage: /llm_ask <your question>");
@@ -407,8 +433,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 }
                 break;
             case "/help":
-                sendMessage(chatId, "🤖 CryptoBot – Help\n" +
-                "📌 General\n\n" +
+                sendMessage(chatId, "🤖 CryptoBot – Help\n\n" +
+                "📌 General\n" +
                         "• /start — start the bot and see main recommendations\n" +
                         "• /set_fiat — choose your base fiat currency\n" +
                         "• /current_fiat — show the current fiat currency\n\n" +
@@ -1333,6 +1359,162 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
 
     public void sendMessage(String chatId, String text) {
         sendMessage(chatId, text, null);
+    }
+
+    private String buildPortfolioSummary(String fiat, Map<String, Double> portfolio) {
+        return portfolio.entrySet().stream()
+                .map(entry -> {
+                    String symbol = entry.getKey();
+                    double amount = entry.getValue();
+                    Double price = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
+                    if (price == null || price <= 0) {
+                        return String.format("%s: %.4f coins (current price unavailable)", symbol, amount);
+                    }
+                    return String.format("%s: %.4f coins @ %.2f %s = %.2f %s", symbol, amount, price, fiat, price * amount, fiat);
+                })
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String buildPortfolioPerformanceSummary(String fiat, Map<String, Double> portfolio, Map<String, Double> firstPrices, Map<String, LocalDateTime> firstDates) {
+        double currentTotal = portfolio.entrySet().stream()
+                .mapToDouble(entry -> {
+                    Double price = cryptoInformationModule.getCurrentPrice(entry.getKey(), fiat).block();
+                    return price != null && price > 0 ? price * entry.getValue() : 0.0;
+                })
+                .sum();
+
+        double total30DaysAgo = computeHistoricalPortfolioTotal(fiat, portfolio, firstPrices, firstDates, 30);
+        double total365DaysAgo = computeHistoricalPortfolioTotal(fiat, portfolio, firstPrices, firstDates, 365);
+
+        return String.format(
+                "Current value: %.2f %s\n" +
+                "Approx. 30 days ago: %.2f %s (%s)\n" +
+                "Approx. 365 days ago: %.2f %s (%s)",
+                currentTotal,
+                fiat,
+                total30DaysAgo,
+                fiat,
+                formatPercentChange(total30DaysAgo, currentTotal),
+                total365DaysAgo,
+                fiat,
+                formatPercentChange(total365DaysAgo, currentTotal)
+        );
+    }
+
+    private String buildPortfolioPriceHistorySummary(String fiat, Map<String, Double> portfolio) {
+        return portfolio.keySet().stream()
+                .map(symbol -> buildSymbolPriceTrendSummary(symbol, fiat))
+                .collect(Collectors.joining("\n"));
+    }
+
+
+    private String buildSymbolPriceHistorySummary(String symbol, String fiat, Double currentPrice) {
+        if (isFiatSymbol(symbol)) {
+            if (symbol.equalsIgnoreCase(fiat)) {
+                return String.format("1 %s equals 1 %s.", symbol, fiat);
+            }
+            return String.format("Current exchange rate: 1 %s = %.6f %s.", symbol, currentPrice != null ? currentPrice : 0.0, fiat);
+        }
+
+        List<Double> history = bingXService.getHistory(symbol, "1d", 30).block();
+        if (history == null || history.isEmpty()) {
+            return String.format("%s: recent price history unavailable.", symbol);
+        }
+        List<Double> historyInFiat = convertHistoryToFiat(history, fiat);
+        double firstPrice = historyInFiat.get(0);
+        double lastPrice = currentPrice != null && currentPrice > 0 ? currentPrice : historyInFiat.get(historyInFiat.size() - 1);
+        return String.format(
+                "%s 30-day trend: %.2f %s -> %.2f %s (%s).",
+                symbol,
+                firstPrice,
+                fiat,
+                lastPrice,
+                fiat,
+                formatPercentChange(firstPrice, lastPrice)
+        );
+    }
+
+    private String buildSymbolPriceTrendSummary(String symbol, String fiat) {
+        List<Double> history = bingXService.getHistory(symbol, "1d", 30).block();
+        if (history == null || history.isEmpty()) {
+            return String.format("%s: price history unavailable.", symbol);
+        }
+        List<Double> historyInFiat = convertHistoryToFiat(history, fiat);
+        int size = historyInFiat.size();
+        double latest = historyInFiat.get(size - 1);
+        double start30 = historyInFiat.get(0);
+        double start7 = size >= 7 ? historyInFiat.get(size - 7) : historyInFiat.get(0);
+        return String.format(
+                "%s: current %.2f %s, 7d %s, 30d %s",
+                symbol,
+                latest,
+                fiat,
+                formatPercentChange(start7, latest),
+                formatPercentChange(start30, latest)
+        );
+    }
+
+    private List<Double> convertHistoryToFiat(List<Double> history, String fiat) {
+        if ("USD".equalsIgnoreCase(fiat)) {
+            return history;
+        }
+        Double rate = Optional.ofNullable(fiatConversionService.getFiatRate("USD", fiat).block()).orElse(1.0);
+        return history.stream().map(price -> price * rate).collect(Collectors.toList());
+    }
+
+    private Double getCurrentPriceForAnalysis(String symbol, String fiat) {
+        if (isFiatSymbol(symbol)) {
+            if (symbol.equalsIgnoreCase(fiat)) {
+                return 1.0;
+            }
+            return fiatConversionService.getFiatRate(symbol, fiat).block();
+        }
+        return cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
+    }
+
+    private boolean isFiatSymbol(String symbol) {
+        return FIAT_SYMBOLS.contains(symbol.toUpperCase());
+    }
+
+    private double computeHistoricalPortfolioTotal(String fiat, Map<String, Double> portfolio, Map<String, Double> firstPrices, Map<String, LocalDateTime> firstDates, int days) {
+        double fiatRate = Optional.ofNullable(fiatConversionService.getFiatRate("USD", fiat).block()).orElse(1.0);
+        LocalDateTime now = LocalDateTime.now();
+        double total = 0.0;
+
+        for (Map.Entry<String, Double> entry : portfolio.entrySet()) {
+            String symbol = entry.getKey();
+            double amount = entry.getValue();
+            Double firstPriceUsd = firstPrices.get(symbol);
+            LocalDateTime firstDate = firstDates.get(symbol);
+            boolean useFirstPrice = firstPriceUsd != null && firstDate != null && Duration.between(firstDate, now).toDays() < days;
+
+            if (useFirstPrice) {
+                total += firstPriceUsd * amount * fiatRate;
+                continue;
+            }
+
+            List<Double> history = bingXService.getHistory(symbol, "1d", days).block();
+            if (history != null && !history.isEmpty()) {
+                total += history.get(0) * amount * fiatRate;
+            } else if (firstPriceUsd != null) {
+                total += firstPriceUsd * amount * fiatRate;
+            } else {
+                Double currentPrice = cryptoInformationModule.getCurrentPrice(symbol, fiat).block();
+                if (currentPrice != null) {
+                    total += currentPrice * amount;
+                }
+            }
+        }
+
+        return total;
+    }
+
+    private String formatPercentChange(double base, double current) {
+        if (base == 0) {
+            return "N/A";
+        }
+        double change = ((current - base) / Math.abs(base)) * 100.0;
+        return String.format("%+.2f%%", change);
     }
 
     @Override
