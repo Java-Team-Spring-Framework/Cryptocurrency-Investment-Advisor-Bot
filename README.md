@@ -77,8 +77,9 @@ TELEGRAM_BOT_TOKEN=ваш_токен_от_BotFather
 # OpenRoute API (LLM)
 OPENROUTE_API_KEY=ваш_api_ключ_openroute
 
-# Секретный токен для HTTP API (Admin)
-API_TOKEN=ваш_секретный_токен_администратора
+# Учётные данные администратора для HTTP API (Spring Security, HTTP Basic)
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=ваш_пароль_администратора
 
 # Порт сервера
 SERVER_PORT=8080
@@ -144,7 +145,8 @@ docker-compose up -d db rabbitmq
 ```powershell
 $env:TELEGRAM_BOT_TOKEN = "ваш_токен"
 $env:OPENROUTE_API_KEY  = "ваш_ключ"
-$env:API_TOKEN          = "токен_админа"
+$env:ADMIN_USERNAME     = "admin"
+$env:ADMIN_PASSWORD     = "ваш_пароль_администратора"
 ```
 
 #### 3. Запустите приложение
@@ -186,7 +188,11 @@ $env:API_TOKEN          = "токен_админа"
 
 ## 🔌 HTTP эндпоинты (Администрирование)
 
-Система предоставляет REST API для мониторинга и управления администратором:
+Система предоставляет REST API для мониторинга и управления администратором.
+Авторизация реализована через **Spring Security (HTTP Basic)**. Логин и
+пароль администратора задаются переменными окружения `ADMIN_USERNAME` и
+`ADMIN_PASSWORD` (см. секцию «Настройка переменных окружения»). Пароль
+хранится в памяти только в виде BCrypt-хэша и в логах не фигурирует.
 
 1. **Проверка работоспособности системы (Public)**
    - **Метод**: `GET http://localhost:8080/healthcheck`
@@ -196,10 +202,27 @@ $env:API_TOKEN          = "токен_админа"
 ![alt text](readme/image-21.png)
 
 2. **Получение списка пользователей (Admin Only)**
-   - **Метод**: `GET http://localhost:8080/admin/users`
-   - **Авторизация**: Требуется HTTP-заголовок `Authorization: Bearer <API_TOKEN>`
-   - **Описание**: Возвращает массив зарегистрированных пользователей. Запросы без валидного ключа отклоняются.
-  
+   - **Метод**: `GET http://localhost:8080/users`
+   - **Авторизация**: HTTP Basic (`ADMIN_USERNAME` / `ADMIN_PASSWORD`). Запросы без корректных учётных данных получают `401 Unauthorized`.
+   - **Описание**: Возвращает массив зарегистрированных пользователей.
+
+   Пример на PowerShell / curl (credentials передаются через `-u`, заголовок `Authorization: Basic ...` curl формирует сам):
+   ```powershell
+   curl.exe -u admin:ваш_пароль http://localhost:8081/users
+   ```
+
+   Чтобы **не указывать пароль в команде явно**, положите креды в файл
+   `~/.netrc` (на Windows — `%USERPROFILE%\_netrc`):
+   ```
+   machine localhost
+     login admin
+     password ваш_пароль
+   ```
+   После этого запрос выполняется без явных секретов в shell-истории:
+   ```powershell
+   curl.exe --netrc http://localhost:8081/users
+   ```
+
    - <img width="881" height="65" alt="image" src="https://github.com/user-attachments/assets/97559586-f1e2-40e7-a10f-80401611bcce" />
 
 
@@ -305,6 +328,6 @@ $env:API_TOKEN          = "токен_админа"
 - **PortfolioManagementModule** — управление инвестиционным портфелем пользователя и расчет PnL.
 - **AlertsHandlingModule** — логика создания, проверки (с помощью RabbitMQ) и отправки уведомлений.
 - **MessageHandlingModule** — интеграция с OpenRoute API для генерации ответов ИИ-советника.
-- **AuthUserModule / AuthAdminModule** — идентификация пользователей (по chat_id) и проверка ключа администратора.
+- **AuthUserModule / SecurityConfig** — идентификация пользователей (по chat_id) и авторизация администратора через Spring Security (HTTP Basic, ROLE_ADMIN).
 - **FiatConversionService** — конвертация фиатных валют по актуальным кросс-курсам.
 

@@ -5,10 +5,8 @@ import org.slf4j.LoggerFactory;
 
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.http.server.reactive.HttpHandler;
-import org.springframework.web.reactive.function.server.RouterFunction;
-import org.springframework.web.reactive.function.server.RouterFunctions;
-import org.springframework.web.reactive.function.server.ServerResponse;
 import org.springframework.http.server.reactive.ReactorHttpHandlerAdapter;
+import org.springframework.web.server.adapter.WebHttpHandlerBuilder;
 
 import reactor.netty.DisposableServer;
 import reactor.netty.http.server.HttpServer;
@@ -41,13 +39,14 @@ public class Application {
             new Thread(context::close)
         );
 
-        RouterFunction<ServerResponse> router =
-            context.getBean(RouterFunction.class);
-
-        log.info("Router loaded");
-
+        // Builds the full reactive pipeline:
+        //   WebFilter beans (incl. Spring Security's WebFilterChainProxy)
+        //     -> WebHandler bean named "webHandler"
+        //        (see RouterConfig#webHandler, which wraps our RouterFunction)
         HttpHandler httpHandler =
-            RouterFunctions.toHttpHandler(router);
+            WebHttpHandlerBuilder.applicationContext(context).build();
+
+        log.info("HTTP handler assembled (WebFilterChain + router)");
 
         int port = Integer.parseInt(
             System.getenv().getOrDefault("SERVER_PORT", "8081")

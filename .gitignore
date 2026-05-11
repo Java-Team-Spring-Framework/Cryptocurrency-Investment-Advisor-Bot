@@ -32,3 +32,4 @@ docker-compose.override.yml
 .metals/
 .vscode/
 bin/
+.aider*
