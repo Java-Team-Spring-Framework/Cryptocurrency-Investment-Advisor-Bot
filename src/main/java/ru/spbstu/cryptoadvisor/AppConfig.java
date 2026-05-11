@@ -40,11 +40,11 @@ public class AppConfig {
         return dataSource;
     }
 
-    @Bean
-    @DependsOn("databaseInitializer")
-    public DSLContext dslContext(DataSource dataSource) throws SQLException {
-        return DSL.using(dataSource.getConnection(), SQLDialect.POSTGRES);
-    }
+        @Bean
+        @DependsOn("databaseInitializer")
+        public DSLContext dslContext(DataSource dataSource) {
+            return DSL.using(dataSource, SQLDialect.POSTGRES);
+        }
 
     @Bean
     public WebClient webClient() {

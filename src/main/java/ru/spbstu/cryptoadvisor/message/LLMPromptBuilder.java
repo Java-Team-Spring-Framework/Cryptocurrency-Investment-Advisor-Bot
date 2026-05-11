@@ -38,7 +38,7 @@ public class LLMPromptBuilder {
                 "Portfolio:\n%s\n" +
                 "Portfolio performance:\n%s\n" +
                 "Recent price trends:\n%s\n" +
-                "Important: Begin your answer by restating the current portfolio exactly as shown above, including symbol, amount.\n" +
+                "Important: Begin your answer by restating the current portfolio exactly as shown above, including symbol and amount, without price.\n" +
                 "Then provide concise review and actionable recommendations.\n" +
                 "Respond concisely with clear investment guidance and avoid any greeting or sign-off.\n" +
                 "Constraints: Use current market context and give practical advice only.",
