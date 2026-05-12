@@ -11,6 +11,8 @@ import org.springframework.web.server.adapter.WebHttpHandlerBuilder;
 import reactor.netty.DisposableServer;
 import reactor.netty.http.server.HttpServer;
 
+import ru.spbstu.cryptoadvisor.config.AppConfig;
+
 public class Application {
 
     private static final Logger log =
