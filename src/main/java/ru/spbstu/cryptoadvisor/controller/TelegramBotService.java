@@ -143,7 +143,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         if (pending != null) {
             if (BTN_BACK.equals(text)) {
                 pendingCommands.remove(chatId);
-                sendMainMenu(chatId, "Action cancelled.");
+                sendHelp(chatId);
                 return;
             }
             switch (pending.action) {
@@ -220,7 +220,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 sendTrackedList(chatId, user);
                 return;
             case BTN_BACK:
-                sendMainMenu(chatId, "Menu");
+                sendHelp(chatId);
                 return;
         }
 
@@ -234,9 +234,6 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                         "🔹 Compare exchange rates of different assets.\n" +
                         "🔹 Manage your portfolio: add and remove cryptocurrencies, as well as track changes in the value of your portfolio and assets.\n" +
                         "📌 To see the list of available features, use the /help command.");
-                break;
-            case "/menu":
-                sendMainMenu(chatId, "Menu:");
                 break;
             case "/set_fiat":
                 if (parts.length > 1) {
@@ -434,34 +431,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                 }
                 break;
             case "/help":
-                sendMessage(chatId, "🤖 CryptoBot – Help\n\n" +
-                "📌 General\n" +
-                        "• /start — start the bot and see main recommendations\n" +
-                        "• /set_fiat — choose your base fiat currency\n" +
-                        "• /current_fiat — show the current fiat currency\n\n" +
-                        "📊 Tracked Cryptocurrencies\n"+
-                        "• /add_tracked_crypto — add a crypto to your watchlist\n" +
-                        "• /remove_tracked_crypto — remove a crypto from your watchlist\n" +
-                        "• /tracked — list tracked cryptocurrencies\n" +
-                        "• /price_crypto — view current crypto price\n\n" +
-                        "💼 Portfolio Management\n"+
-                        "• /portfolio_add — add coins to your portfolio\n" +
-                        "• /portfolio_remove — remove coins from your portfolio\n" +
-                        "• /portfolio — view portfolio value with current prices\n" +
-                        "• /portfolio_amount — show total portfolio value\n" +
-                        "• /portfolio_history — view portfolio value change over a period\n" +
-                        "• /portfolio_crypto_history — show per-crypto change since purchase\n\n" +
-                        "🔔 Alerts\n"+
-                        "• /set_alert — create a custom price alert\n" +
-                        "• /alerts_list — list your active alerts\n" +
-                        "• /delete_alert — delete an alert\n\n" +
-                        "🔄 Comparison and History\n"+
-                        "• /compare — compare two cryptocurrencies\n" +
-                        "• /price_history — view crypto price history \n\n" +
-                        "🧠 AI Analysis (LLM)\n"+
-                        "• /llm_analyze <symbol> — get investment analysis\n" +
-                        "• /llm_portfolio — review your portfolio with AI\n" +
-                        "• /llm_ask <question> — ask the AI about crypto");
+                sendHelp(chatId);
                 break;
             default:
                 if (isAllowedFiat(text)) {
@@ -490,7 +460,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             sendMessage(chatId, "✅ Fiat currency updated\n\n" +
                     "💵 Your fiat currency has been set to " + normalized + ".");
         } else {
-            sendMainMenu(chatId, "Failed to set fiat currency. Please try again.");
+            sendMessage(chatId, "Failed to set fiat currency. Please try again.");
         }
     }
 
@@ -654,7 +624,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             sendMessage(chatId, "⚠️ No tracked cryptocurrencies left.\n" +
                     "🔄 Default BTC has been automatically added back to your tracked list.");
         } else {
-            sendMainMenu(chatId, "Tracked crypto removed. Current tracked: " + String.join(", ", trackedAfter));
+            sendMessage(chatId, "Tracked crypto removed. Current tracked: " + String.join(", ", trackedAfter));
         }
     }
 
@@ -1194,7 +1164,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         try {
             Integer alertId = Integer.parseInt(text);
             if (cryptoInformationModule.removeUserAlert(user.getId(), alertId)) {
-                sendMainMenu(chatId, "Alert ID " + alertId + " deleted successfully.");
+                sendMessage(chatId, "Alert ID " + alertId + " deleted successfully.");
                 handleAlertsList(chatId, user);
             } else {
                 sendMessage(chatId, "Alert not found or could not be deleted.");
@@ -1268,7 +1238,7 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             String fiat = getUserFiat(user);
             cryptoInformationModule.addUserAlert(user.getId(), symbol, type, targetValue, fiat);
             
-            sendMainMenu(chatId, "Successfully created " + type + " alert for " + symbol + " with target " + targetValue + (type.equals("PERCENT") ? "%" : " " + fiat) + ".");
+            sendMessage(chatId, "Successfully created " + type + " alert for " + symbol + " with target " + targetValue + (type.equals("PERCENT") ? "%" : " " + fiat) + ".");
         } catch (NumberFormatException e) {
             sendMessage(chatId, "Invalid number format. Please enter a valid number.");
         }
@@ -1316,12 +1286,36 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
         return markup;
     }
 
-    private ReplyKeyboardMarkup createMainMenu() {
-        return null;
-    }
-
-    private void sendMainMenu(String chatId, String text) {
-        sendMessage(chatId, text, createMainMenu());
+    private void sendHelp(String chatId) {
+        sendMessage(chatId, "🤖 CryptoBot – Help\n\n" +
+                "📌 General\n" +
+                "• /start — start the bot and see main recommendations\n" +
+                "• /set_fiat — choose your base fiat currency\n" +
+                "• /current_fiat — show the current fiat currency\n\n" +
+                "📊 Tracked Cryptocurrencies\n" +
+                "• /add_tracked_crypto — add a crypto to your watchlist\n" +
+                "• /remove_tracked_crypto — remove a crypto from your watchlist\n" +
+                "• /tracked — list tracked cryptocurrencies\n" +
+                "• /price_crypto — view current crypto price\n\n" +
+                "💼 Portfolio Management\n" +
+                "• /portfolio_add — add coins to your portfolio\n" +
+                "• /portfolio_remove — remove coins from your portfolio\n" +
+                "• /portfolio — view portfolio value with current prices\n" +
+                "• /portfolio_amount — show total portfolio value\n" +
+                "• /portfolio_history — view portfolio value change over a period\n" +
+                "• /portfolio_crypto_history — show per-crypto change since purchase\n\n" +
+                "🔔 Alerts\n" +
+                "• /set_alert — create a custom price alert\n" +
+                "• /alerts_list — list your active alerts\n" +
+                "• /alerts — show triggered alerts history for the last 7 days\n" +
+                "• /delete_alert — delete an alert\n\n" +
+                "🔄 Comparison and History\n" +
+                "• /compare — compare two cryptocurrencies\n" +
+                "• /price_history — view crypto price history \n\n" +
+                "🧠 AI Analysis (LLM)\n" +
+                "• /llm_analyze <symbol> — get investment analysis\n" +
+                "• /llm_portfolio — review your portfolio with AI\n" +
+                "• /llm_ask <question> — ask the AI about crypto");
     }
 
     private void sendMessage(String chatId, String text, ReplyKeyboardMarkup markup) {
