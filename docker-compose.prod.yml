@@ -1,0 +1,91 @@
+##
+# Production docker-compose для развёртывания из Docker Hub на Linux-сервере.
+#
+# Отличается от локального docker-compose.yml:
+#  - вместо `build:` использует готовый `image:` из Docker Hub
+#  - postgres/rabbitmq порты НЕ пробрасываются на хост (только внутри compose-сети)
+#  - схема БД накатывается самим приложением (DatabaseInitializer) из classpath,
+#    поэтому schema.sql не монтируется
+#  - включены healthchecks и restart: unless-stopped
+#
+# Использование на сервере:
+#   docker compose -f docker-compose.prod.yml pull        # подтянуть свежий образ
+#   docker compose -f docker-compose.prod.yml up -d       # запустить всё
+#   docker compose -f docker-compose.prod.yml logs -f app # посмотреть логи
+##
+version: "3.9"
+
+services:
+  app:
+    image: ${DOCKER_IMAGE:-sergger/crypto-advisor-bot:latest}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVER_PORT=8080
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-crypto_bot_db}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=${RABBITMQ_USER:-guest}
+      - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-guest}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - OPENROUTE_API_KEY=${OPENROUTE_API_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
+    ports:
+      # Снаружи светим только HTTP API приложения.
+      # Если перед ним будет nginx/traefik, замените на "127.0.0.1:8081:8080".
+      - "${APP_HOST_PORT:-8081}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-crypto_bot_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    # Порт PostgreSQL не выставляем наружу — доступен только из compose-сети.
+    expose:
+      - "5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-crypto_bot_db}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    restart: unless-stopped
+    # AMQP и management-порт — только внутри compose-сети.
+    expose:
+      - "5672"
+      - "15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+volumes:
+  postgres-data:
