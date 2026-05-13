@@ -155,6 +155,48 @@ $env:ADMIN_PASSWORD     = "ваш_пароль_администратора"
 .\gradlew.bat bootRun
 ```
 
+## 🐳 Запуск через Docker Hub
+### Необходимые условия:
+- Установленный Docker
+- Установленный Docker Compose
+### Пошаговая инструкция:
+1. Создайте рабочую директорию:
+
+`mkdir crypto-bot && cd crypto-bot`
+
+2. Скачайте образ из Docker Hub:
+
+`docker pull sergger/crypto-advisor-bot:v1`
+
+3. Настройте окружение:
+
+Создайте файл `.env` и заполните его (аналогично локальному запуску)
+
+4. Настройка docker-compose.yml:
+
+- Скачайте оригинальный файл: docker-compose.yml
+
+- Измените секцию app:
+
+```
+app:
+image: docker pull sergger/crypto-advisor-bot:v1
+# Удалите или закомментируйте секцию build
+```
+
+5. Запустите приложение:
+
+`docker-compose up -d`
+
+6. Проверка работы:
+
+`docker-compose logs -f app`
+
+7. Остановка приложения:
+
+`docker-compose down`
+
+
 ---
 
 ## 🖼 Взаимодействие с ботом (Список команд)
