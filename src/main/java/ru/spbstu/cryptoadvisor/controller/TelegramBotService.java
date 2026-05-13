@@ -294,6 +294,11 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
             case "/llm_analyze":
                 if (parts.length > 1) {
                     String symbol = parts[1].toUpperCase();
+                    if (!isAllowedCrypto(symbol)) {
+                        sendMessage(chatId, "Please specify a valid cryptocurrency token. Supported: "
+                                + String.join(", ", CRYPTO_SYMBOLS));
+                        break;
+                    }
                     String fiat = getUserFiat(user);
                     sendMessage(chatId, "Requesting investment analysis for " + symbol + "...");
                     Double currentPrice = getCurrentPriceForAnalysis(symbol, fiat);
@@ -302,7 +307,8 @@ public class TelegramBotService extends TelegramLongPollingBot implements Initia
                     String analysis = messageHandlingModule.sendPrompt(prompt).block();
                     sendMessage(chatId, analysis != null ? analysis : "No response received.");
                 } else {
-                    sendMessage(chatId, "Usage: /llm_analyze <symbol>");
+                    sendMessage(chatId, "Usage: /llm_analyze <symbol>. Supported: "
+                            + String.join(", ", CRYPTO_SYMBOLS));
                 }
                 break;
             case "/llm_portfolio":
