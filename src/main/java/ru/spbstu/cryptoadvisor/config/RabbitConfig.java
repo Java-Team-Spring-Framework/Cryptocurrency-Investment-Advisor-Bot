@@ -89,7 +89,9 @@ public class RabbitConfig {
 
     @Bean
     public Queue notificationsQueue() {
-        return QueueBuilder.durable(QUEUE_NOTIFICATIONS).build();
+        return QueueBuilder.durable(QUEUE_NOTIFICATIONS)
+                .withArgument("x-message-ttl", 1800000) // 30 minutes — drop stale notifications so the bot does not spam after downtime
+                .build();
     }
 
     @Bean

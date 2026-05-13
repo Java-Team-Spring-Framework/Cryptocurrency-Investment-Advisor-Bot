@@ -20,6 +20,7 @@ import ru.spbstu.cryptoadvisor.config.RabbitConfig;
 import ru.spbstu.cryptoadvisor.controller.TelegramBotService;
 import ru.spbstu.cryptoadvisor.dto.AlertCheckMessage;
 import ru.spbstu.cryptoadvisor.dto.AlertHistoryItem;
+import ru.spbstu.cryptoadvisor.dto.NotificationMessage;
 import ru.spbstu.cryptoadvisor.dto.TrackedCurrencyRow;
 import ru.spbstu.cryptoadvisor.dto.TrackedCurrencySummary;
 import ru.spbstu.cryptoadvisor.dto.UserAlertRow;
@@ -702,8 +703,11 @@ public class AlertsHandlingModule implements InitializingBean {
     }
 
     /**
-     * Отправляет уведомление напрямую через TelegramBotService, минуя очередь RabbitMQ.
-     * Также записывает факт срабатывания в alert_history.
+     * Записывает факт срабатывания алерта в alert_history и кладёт уведомление
+     * в RabbitMQ-очередь q.notifications. Очередь имеет TTL 30 минут — если бот
+     * недоступен дольше, протухшие уведомления отбрасываются брокером и не спамят
+     * пользователя устаревшими ценами. Доставку в Telegram выполняет
+     * NotificationListenerService.
      */
     private void sendDirectNotification(
         String chatId,
@@ -713,7 +717,6 @@ public class AlertsHandlingModule implements InitializingBean {
         String message,
         String reason
     ) {
-        // 1. Записываем в историю оповещений
         try {
             alertHistoryRepository.insert(trackedCurrencyId, userId, symbol, reason);
         } catch (Exception e) {
@@ -724,39 +727,32 @@ public class AlertsHandlingModule implements InitializingBean {
             );
         }
 
-        // 2. Формируем текст для пользователя
-        StringBuilder sb = new StringBuilder();
-        if (reason != null && !reason.isEmpty()) {
-            sb.append("🚨 ").append(reason).append("\n\n");
-        }
-        if (symbol != null && !symbol.isEmpty()) {
-            sb.append("📊 Currency: ").append(symbol).append("\n");
-        }
-        sb.append(message);
-
-        // 3. Отправляем напрямую через Telegram
         if (chatId == null || chatId.isEmpty()) {
             log.warn(
-                "sendDirectNotification: chatId is empty for user {}, cannot send Telegram message",
+                "sendDirectNotification: chatId is empty for user {}, cannot enqueue notification",
                 userId
             );
             return;
         }
-        log.info(
-            "Sending direct Telegram notification to chatId={}, userId={}: {}",
-            chatId,
+
+        NotificationMessage notification = new NotificationMessage(
             userId,
-            sb
+            chatId,
+            trackedCurrencyId,
+            symbol,
+            message,
+            reason
         );
         try {
-            telegramBotService.sendMessage(chatId, sb.toString());
+            rabbitMQService.sendNotification(notification);
             log.info(
-                "Direct Telegram notification sent successfully to chatId={}",
-                chatId
+                "Enqueued notification to q.notifications for chatId={}, userId={}",
+                chatId,
+                userId
             );
         } catch (Exception e) {
             log.error(
-                "Failed to send direct Telegram notification to chatId={}: {}",
+                "Failed to enqueue notification for chatId={}: {}",
                 chatId,
                 e.getMessage(),
                 e

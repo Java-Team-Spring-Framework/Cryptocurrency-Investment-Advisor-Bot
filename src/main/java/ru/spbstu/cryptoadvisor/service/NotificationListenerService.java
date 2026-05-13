@@ -9,7 +9,6 @@ import org.springframework.stereotype.Service;
 import ru.spbstu.cryptoadvisor.controller.TelegramBotService;
 import ru.spbstu.cryptoadvisor.dto.NotificationMessage;
 import ru.spbstu.cryptoadvisor.config.RabbitConfig;
-import ru.spbstu.cryptoadvisor.repository.AlertHistoryRepository;
 
 @Service
 public class NotificationListenerService {
@@ -19,14 +18,9 @@ public class NotificationListenerService {
     );
 
     private final TelegramBotService telegramBotService;
-    private final AlertHistoryRepository alertHistoryRepository;
 
-    public NotificationListenerService(
-        TelegramBotService telegramBotService,
-        AlertHistoryRepository alertHistoryRepository
-    ) {
+    public NotificationListenerService(TelegramBotService telegramBotService) {
         this.telegramBotService = telegramBotService;
-        this.alertHistoryRepository = alertHistoryRepository;
         log.info("NotificationListenerService initialized with dependencies");
     }
 
@@ -64,10 +58,8 @@ public class NotificationListenerService {
                 return;
             }
 
-            // Записываем в историю оповещений
-            recordNotificationHistory(notification);
-
-            // Формируем сообщение для пользователя
+            // Запись в alert_history делается producer'ом (AlertsHandlingModule)
+            // в момент срабатывания алерта — здесь только доставка.
             String messageText = formatNotificationMessage(notification);
 
             // Отправляем сообщение через Telegram
@@ -116,31 +108,6 @@ public class NotificationListenerService {
                     );
                 }
             }
-        }
-    }
-
-    /**
-     * Записывает уведомление в историю оповещений
-     */
-    private void recordNotificationHistory(NotificationMessage notification) {
-        try {
-            alertHistoryRepository.insert(
-                    notification.getTrackedCurrencyId(),
-                    notification.getUserId(),
-                    notification.getSymbol(),
-                    notification.getReason()
-            );
-            log.debug(
-                "Notification recorded in alert_history for user {}",
-                notification.getUserId()
-            );
-        } catch (Exception e) {
-            log.warn(
-                "Failed to record notification history for user {}: {}",
-                notification.getUserId(),
-                e.getMessage()
-            );
-            // Не прерываем процесс отправки, если запись в БД не удалась
         }
     }
 
